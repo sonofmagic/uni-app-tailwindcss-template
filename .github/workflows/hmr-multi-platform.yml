@@ -95,5 +95,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run Iconify content HMR smoke
-        run: pnpm run test:hmr:mp-weixin -- --timeout 240000
+      - name: Run Tailwind artifact HMR smoke
+        run: pnpm run test:hmr:artifact:mp-weixin -- --timeout 240000

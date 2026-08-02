@@ -2,6 +2,7 @@
 node_modules/
 unpackage/
 dist/
+.hmr-artifacts/
 
 # local env files
 .env.local

@@ -66,6 +66,14 @@ jobs:
       - name: Build
         run: pnpm run ${{ matrix.script }}
 
+      - name: Verify Pages output
+        if: matrix.target == 'h5'
+        run: test -f dist/build/h5/index.html
+
+      - name: Install Playwright browser
+        if: matrix.target == 'h5'
+        run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
+
       - name: Create CLI E2E
         if: matrix.target == 'h5'
         run: pnpm test:e2e

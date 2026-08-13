@@ -2,6 +2,10 @@
 node_modules/
 unpackage/
 dist/
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
 
 # local env files
 .env.local

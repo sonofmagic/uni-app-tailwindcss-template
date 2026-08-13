@@ -1,0 +1,62 @@
+@import 'tailwindcss' source(none);
+
+@plugin '@iconify/tailwind4' {
+  prefix: 'i';
+}
+
+@custom-variant wx {
+  /*  #ifdef  MP-WEIXIN  */
+
+  @slot;
+
+  /*  #endif  */
+}
+
+@custom-variant not-wx {
+  /*  #ifndef  MP-WEIXIN  */
+
+  @slot;
+
+  /*  #endif  */
+}
+
+@source "../index.html";
+@source "./**/*.{html,js,ts,jsx,tsx,vue}";
+@source inline("i-[mdi--github-circle] i-[mdi--star] before:content-['现在，让我们开始神奇的_tailwindcss_开发之旅吧！'] before:content-['现在，让我们继续神奇的_tailwindcss_HMR_回归之旅吧！']");
+
+@layer base {
+  /*  #ifdef  APP-PLUS  */
+
+  uni-view {
+    display: block;
+  }
+
+  /*  #endif  */
+
+  /*  #ifdef  H5  */
+
+  svg {
+    display: initial;
+  }
+
+  /*  #endif  */
+}
+
+@layer components {
+  .safe-area-bottom {
+    padding-bottom: calc(1.5rem + constant(safe-area-inset-bottom));
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+
+  .raw-btn {
+    @apply after:border-none m-0 inline-flex items-center justify-center gap-2 rounded text-sm font-semibold transition-all;
+
+    line-height: 1.5;
+  }
+
+  .btn {
+    @apply after:border-none m-0 inline-flex items-center justify-center gap-2 rounded bg-linear-to-r from-[#9e58e9] to-blue-500 px-2 py-1 text-sm font-semibold text-white transition-all;
+
+    line-height: 1.5;
+  }
+}

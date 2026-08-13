@@ -3,30 +3,22 @@ name: HMR Multi-Platform
 on:
   pull_request:
     paths:
-      - src/**
-      - build/**
-      - scripts/**
+      - packages/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - patches/**
-      - vite.config.ts
-      - eslint.config.mjs
       - tsconfig.json
       - .github/workflows/hmr-multi-platform.yml
   push:
     branches:
       - main
     paths:
-      - src/**
-      - build/**
-      - scripts/**
+      - packages/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - patches/**
-      - vite.config.ts
-      - eslint.config.mjs
       - tsconfig.json
       - .github/workflows/hmr-multi-platform.yml
   workflow_dispatch:
@@ -73,6 +65,10 @@ jobs:
 
       - name: Build
         run: pnpm run ${{ matrix.script }}
+
+      - name: Create CLI E2E
+        if: matrix.target == 'h5'
+        run: pnpm test:e2e
 
   hmr:
     name: HMR mp-weixin

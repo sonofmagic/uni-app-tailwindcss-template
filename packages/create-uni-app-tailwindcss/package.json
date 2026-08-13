@@ -1,0 +1,27 @@
+{
+  "name": "create-uni-app-tailwindcss",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "create-uni-app-tailwindcss": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "template"
+  ],
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --out-dir dist --clean",
+    "prepack": "pnpm run build",
+    "start": "pnpm run build && node dist/cli.js",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.3"
+  }
+}

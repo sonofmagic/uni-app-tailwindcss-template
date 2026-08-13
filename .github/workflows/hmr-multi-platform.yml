@@ -7,6 +7,8 @@ on:
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - scripts/**
+      - templates.json
       - patches/**
       - tsconfig.json
       - .github/workflows/hmr-multi-platform.yml
@@ -18,30 +20,40 @@ on:
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      - scripts/**
+      - templates.json
       - patches/**
       - tsconfig.json
       - .github/workflows/hmr-multi-platform.yml
   workflow_dispatch:
 
 jobs:
+  templates:
+    name: Resolve templates
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.matrix.outputs.build }}
+      hmr: ${{ steps.matrix.outputs.hmr }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build matrices
+        id: matrix
+        run: |
+          matrix=$(node scripts/ci-matrix.mjs)
+          echo "build=$(node -e 'const data=JSON.parse(process.argv[1]); console.log(JSON.stringify(data.build))' "$matrix")" >> "$GITHUB_OUTPUT"
+          echo "hmr=$(node -e 'const data=JSON.parse(process.argv[1]); console.log(JSON.stringify(data.hmr))' "$matrix")" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.template }} / ${{ matrix.target }}
+    needs: templates
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: h5
-            script: build:h5
-          - target: app
-            script: build:app
-          - target: mp-weixin
-            script: build:mp-weixin
-          - target: mp-alipay
-            script: build:mp-alipay
-          - target: mp-toutiao
-            script: build:mp-toutiao
+        include: ${{ fromJSON(needs.templates.outputs.build) }}
 
     steps:
       - name: Checkout
@@ -61,27 +73,36 @@ jobs:
 
       - name: Lint
         if: matrix.target == 'h5'
-        run: pnpm lint
+        run: pnpm template ${{ matrix.template }} lint
 
       - name: Build
-        run: pnpm run ${{ matrix.script }}
+        run: pnpm template ${{ matrix.template }} ${{ matrix.script }}
+
+      - name: Sync Pages output
+        if: matrix.isDefault && matrix.target == 'h5'
+        run: node scripts/sync-h5-output.mjs ${{ matrix.template }}
 
       - name: Verify Pages output
-        if: matrix.target == 'h5'
+        if: matrix.isDefault && matrix.target == 'h5'
         run: test -f dist/build/h5/index.html
 
       - name: Install Playwright browser
-        if: matrix.target == 'h5'
+        if: matrix.isDefault && matrix.target == 'h5'
         run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
 
       - name: Create CLI E2E
-        if: matrix.target == 'h5'
+        if: matrix.isDefault && matrix.target == 'h5'
         run: pnpm test:e2e
 
   hmr:
-    name: HMR mp-weixin
+    name: HMR ${{ matrix.template }} / ${{ matrix.target }}
+    needs: templates
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.templates.outputs.hmr) }}
 
     steps:
       - name: Checkout
@@ -100,4 +121,4 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Iconify content HMR smoke
-        run: pnpm run test:hmr:mp-weixin -- --timeout 240000
+        run: pnpm template ${{ matrix.template }} ${{ matrix.script }} -- --timeout 240000

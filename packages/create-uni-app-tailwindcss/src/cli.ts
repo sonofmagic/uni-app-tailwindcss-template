@@ -5,13 +5,15 @@ import path from 'node:path'
 import process from 'node:process'
 import prompts from 'prompts'
 
-const templateRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'template')
+const templatesRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'templates')
 const options = parseArgs(process.argv.slice(2))
 const targetArg = options.target
 const targetDir = path.resolve(process.cwd(), targetArg ?? 'uni-app-tailwindcss-app')
 const projectName = path.basename(targetDir)
 
 async function main() {
+  const registry = await loadTemplateRegistry()
+  const template = await resolveTemplate(registry, options.template)
   const packageManager = await resolvePackageManager(options.packageManager)
   if (await exists(targetDir)) {
     const result = await prompts({
@@ -25,13 +27,30 @@ async function main() {
   }
 
   await mkdir(targetDir, { recursive: true })
-  await copyTemplate(templateRoot, targetDir)
+  await copyTemplate(path.join(templatesRoot, template.id), targetDir)
   await renamePackage(targetDir, projectName)
 
   console.log(`Created ${projectName}`)
+  console.log(`Template: ${template.id}`)
   console.log(`cd ${projectName}`)
   console.log(`${packageManager} install`)
   console.log(`${packageManager} dev:h5`)
+}
+
+type Template = {
+  id: string
+  name: string
+  description: string
+}
+
+type TemplateRegistry = {
+  defaultTemplate: string
+  templates: Template[]
+  version: number
+}
+
+async function loadTemplateRegistry(): Promise<TemplateRegistry> {
+  return JSON.parse(await readFile(path.join(templatesRoot, 'registry.json'), 'utf8'))
 }
 
 async function copyTemplate(source: string, target: string) {
@@ -68,6 +87,7 @@ async function exists(filePath: string) {
 
 function parseArgs(args: string[]) {
   let packageManager: string | undefined
+  let template: string | undefined
   let target: string | undefined
 
   for (let index = 0; index < args.length; index += 1) {
@@ -88,12 +108,51 @@ function parseArgs(args: string[]) {
       packageManager = arg.slice('--package-manager='.length)
       continue
     }
+    if (arg === '--template') {
+      template = args[index + 1]
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--template=')) {
+      template = arg.slice('--template='.length)
+      continue
+    }
     if (!arg.startsWith('-') && !target) {
       target = arg
     }
   }
 
-  return { packageManager, target }
+  return { packageManager, target, template }
+}
+
+async function resolveTemplate(registry: TemplateRegistry, templateId?: string) {
+  if (templateId) {
+    const template = registry.templates.find(item => item.id === templateId)
+    if (!template) {
+      throw new Error(`Unknown template "${templateId}". Available templates: ${registry.templates.map(item => item.id).join(', ')}`)
+    }
+    return template
+  }
+
+  if (!process.stdin.isTTY || registry.templates.length === 1) {
+    return registry.templates.find(item => item.id === registry.defaultTemplate) ?? registry.templates[0]
+  }
+
+  const response = await prompts({
+    type: 'select',
+    name: 'template',
+    message: 'Template',
+    choices: registry.templates.map(template => ({
+      description: template.description,
+      title: template.name,
+      value: template.id,
+    })),
+    initial: Math.max(0, registry.templates.findIndex(item => item.id === registry.defaultTemplate)),
+  })
+
+  return registry.templates.find(item => item.id === response.template)
+    ?? registry.templates.find(item => item.id === registry.defaultTemplate)
+    ?? registry.templates[0]
 }
 
 async function resolvePackageManager(packageManager?: string) {

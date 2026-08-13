@@ -7,11 +7,10 @@
     "create-uni-app-tailwindcss": "./dist/cli.js"
   },
   "files": [
-    "dist",
-    "template"
+    "dist"
   ],
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --out-dir dist --clean",
+    "build": "node scripts/build-package.mjs",
     "prepack": "pnpm run build",
     "start": "pnpm run build && node dist/cli.js",
     "test:e2e": "playwright test"

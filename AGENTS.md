@@ -14,6 +14,9 @@ Use `pnpm install` to install dependencies. `weapp-tailwindcss@5` handles Tailwi
 - `pnpm build:h5`: create an H5 production build.
 - `pnpm create:build`: build the initializer and bundle every registered template.
 - `pnpm test:e2e`: verify scaffolding and the generated H5 application with Playwright.
+- `pnpm test:hmr:artifact:mp-weixin`: run the headless Mini Program artifact HMR check used by CI.
+- `pnpm test:hmr:h5`: verify H5 HMR in a real browser and write evidence under `packages/template/.hmr-artifacts/`.
+- `pnpm test:hmr:mp-weixin`: verify HMR against a logged-in WeChat DevTools runtime.
 - `pnpm template @default open:dev`: open WeChat DevTools for the default template.
 - `pnpm lint`: run the default template's ESLint checks.
 - `pnpm lint:fix`: auto-fix lint issues in the default template.
@@ -31,9 +34,9 @@ Playwright tests live in `packages/create-uni-app-tailwindcss/tests/` and cover 
 
 ### HMR Verification Notes
 
-When verifying `weapp-tailwindcss` HMR, run `pnpm dev:mp-weixin` in a normal, non-sandboxed shell. Codex/tool sandboxes can prevent the uni-app mini-program watcher from receiving file events, which makes `packages/template/dist/dev/mp-weixin` appear stale even though the project HMR path is healthy.
+Use `pnpm test:hmr:artifact:mp-weixin` for the deterministic headless CI path. It applies the shared probe fixture atomically, verifies transformed template/script/style artifacts before and after an incremental compile, and restores the source even after interruption.
 
-For a reliable check, edit a real source SFC such as `packages/template/src/components/sections/CapabilityShowcase.vue` and verify both template classes and script-side Tailwind class strings. Expected mini-program evidence includes `Incremental Compiling...` in the dev log plus transformed class names in `packages/template/dist/dev/mp-weixin/**/*.wxml`, `*.js`, and `app.wxss` (for example arbitrary values converted to `*_b_*` selectors). For H5, confirm the Vite `hmr update` log and, when possible, inspect the browser computed style.
+Runtime verification remains platform-specific: `pnpm test:hmr:h5` uses Playwright, `pnpm test:hmr:mp-weixin` requires logged-in WeChat DevTools, and the App scripts require the matching HBuilderX CLI plus a running device or simulator. Reports, screenshots, and logs live under ignored `packages/template/.hmr-artifacts/`; do not commit them or bundle them into generated projects.
 
 ## Commit & Pull Request Guidelines
 

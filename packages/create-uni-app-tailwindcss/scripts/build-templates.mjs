@@ -7,6 +7,13 @@ const packageRoot = fileURLToPath(new URL('../', import.meta.url))
 const outputRoot = path.join(packageRoot, 'dist', 'templates')
 const temporaryRoot = await mkdtemp(path.join(packageRoot, 'dist', '.templates-'))
 const registry = await loadTemplateRegistry()
+const excludedSegments = new Set([
+  '.hmr-artifacts',
+  'dist',
+  'node_modules',
+  'playwright-report',
+  'test-results',
+])
 
 try {
   for (const template of registry.templates) {
@@ -14,7 +21,7 @@ try {
     await cp(sourceRoot, path.join(temporaryRoot, template.id), {
       filter: source => {
         const segments = path.relative(sourceRoot, source).split(path.sep)
-        return !segments.includes('node_modules') && !segments.includes('dist')
+        return segments.every(segment => !excludedSegments.has(segment))
       },
       recursive: true,
     })

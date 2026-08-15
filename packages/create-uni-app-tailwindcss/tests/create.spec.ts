@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -25,6 +25,7 @@ for (const template of registry.templates) {
       await expectFile(path.join(projectDir, '.npmrc'))
       await expectFile(path.join(projectDir, 'src', 'pages.json'))
       await expectFile(path.join(projectDir, 'vite.config.ts'))
+      await expectMissing(path.join(projectDir, '.hmr-artifacts'))
     }
     finally {
       await rm(dir, { recursive: true, force: true })
@@ -46,6 +47,10 @@ test('rejects an unknown template', async () => {
 async function expectFile(filePath: string) {
   const content = await readFile(filePath, 'utf8')
   expect(content.length).toBeGreaterThan(0)
+}
+
+async function expectMissing(filePath: string) {
+  await expect(access(filePath)).rejects.toThrow()
 }
 
 function runCommand(command: string, args: string[], cwd: string, inherit = true) {

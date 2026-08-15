@@ -4,6 +4,7 @@ unpackage/
 dist/
 **/node_modules/
 **/dist/
+**/.hmr-artifacts/
 **/test-results/
 **/playwright-report/
 

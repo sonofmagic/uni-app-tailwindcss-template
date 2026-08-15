@@ -9,7 +9,7 @@ const build = registry.templates.flatMap(template => template.targets.map(target
 })))
 const hmr = registry.templates.flatMap(template => (template.hmrTargets ?? []).map(target => ({
   isDefault: template.id === registry.defaultTemplate,
-  script: `test:hmr:${target}`,
+  script: `test:hmr:artifact:${target}`,
   target,
   template: template.id,
 })))

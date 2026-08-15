@@ -18,6 +18,21 @@ pnpm test:smoke
 pnpm test:e2e
 ```
 
+## Template HMR verification
+
+The root scripts proxy the default template's artifact and runtime HMR checks:
+
+```bash
+pnpm test:hmr:artifact:mp-weixin
+pnpm test:hmr:h5
+pnpm test:hmr:mp-weixin
+pnpm test:hmr:app:android -- --device-id <android-device-id> --hbuilderx-cli <hbuilderx-cli>
+pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuilderx-cli>
+pnpm test:hmr:all
+```
+
+CI runs the headless artifact check for every registered HMR target. Desktop runtime requirements and evidence details are documented in [`packages/template/README.md`](packages/template/README.md#tailwind-css-hmr-四端验收).
+
 ## Create a new project
 
 ```bash
@@ -36,7 +51,8 @@ The command copies the selected bundled template into `my-app`, rewrites the pac
 
 1. Add its source as a workspace package under `packages/`.
 2. Register its id, source, build targets, HMR targets, and H5 smoke text in `templates.json`.
-3. Run `pnpm create:build` and `pnpm test:e2e`.
+3. Implement `test:hmr:artifact:<target>` for each registered HMR target.
+4. Run `pnpm create:build` and `pnpm test:e2e`.
 
 The create package bundles every registered template. GitHub Actions also derives its build and HMR matrices from the registry, so new templates do not require workflow edits.
 

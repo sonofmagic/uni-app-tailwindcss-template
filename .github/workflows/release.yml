@@ -70,7 +70,6 @@ jobs:
       - name: Run repo release CI
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           REPO_RELEASE_MODE: ${{ inputs.mode || 'auto' }}
           REPO_RELEASE_PACKAGE: ${{ inputs.package }}
           REPO_RELEASE_VERSION: ${{ inputs.version }}

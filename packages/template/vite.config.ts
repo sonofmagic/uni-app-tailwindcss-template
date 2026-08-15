@@ -11,7 +11,7 @@ import { WeappTailwindcss } from 'weapp-tailwindcss/vite'
 export default defineConfig(async () => {
   // 新版本的 unplugin-auto-import 改成了只有 esm 格式的产物，而 uni-app 目前必须 cjs 格式
   // 所以需要改成动态 import 的写法来进行引入
-  // 详见 https://github.com/sonofmagic/uni-app-vite-vue3-tailwind-vscode-template/issues/29
+  // 详见 https://github.com/sonofmagic/uni-app-tailwindcss-template/issues/29
   const { default: AutoImport } = await import('unplugin-auto-import/vite')
   const projectRoot = fileURLToPath(new URL('.', import.meta.url))
   const bridgeFile = path.join(projectRoot, '.hmr-artifacts/.file-event-bridge')

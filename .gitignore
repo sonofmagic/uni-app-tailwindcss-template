@@ -2,7 +2,11 @@
 node_modules/
 unpackage/
 dist/
-.hmr-artifacts/
+**/node_modules/
+**/dist/
+**/.hmr-artifacts/
+**/test-results/
+**/playwright-report/
 
 # local env files
 .env.local

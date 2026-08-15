@@ -1,0 +1,54 @@
+{
+  "name": "create-uni-app-tailwindcss",
+  "version": "0.1.0",
+  "description": "Create a uni-app project with Vite, Vue 3, Tailwind CSS, and weapp-tailwindcss.",
+  "private": false,
+  "type": "module",
+  "author": "ice breaker <hi@sonofmagic.top>",
+  "license": "MIT",
+  "homepage": "https://github.com/sonofmagic/uni-app-tailwindcss-template#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sonofmagic/uni-app-tailwindcss-template.git",
+    "directory": "packages/create-uni-app-tailwindcss"
+  },
+  "bugs": {
+    "url": "https://github.com/sonofmagic/uni-app-tailwindcss-template/issues"
+  },
+  "keywords": [
+    "uni-app",
+    "vite",
+    "vue3",
+    "tailwindcss",
+    "weapp-tailwindcss",
+    "create-app"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "create-uni-app-tailwindcss": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "node scripts/build-package.mjs",
+    "prepack": "pnpm run build",
+    "start": "pnpm run build && node dist/cli.js",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.3"
+  }
+}

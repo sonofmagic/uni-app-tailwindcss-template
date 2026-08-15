@@ -47,6 +47,17 @@ pnpm create uni-app-tailwindcss my-app --template default
 
 The command copies the selected bundled template into `my-app`, rewrites the package name, and leaves you with a normal pnpm project.
 
+## Update dependencies
+
+Use separate commands for regular dependencies and the uni-app compiler toolchain:
+
+```bash
+pnpm update:deps
+pnpm update:uni-app
+```
+
+`update:deps` interactively updates regular dependencies in the default template while leaving the DCloud-managed uni-app compatibility set unchanged. `update:uni-app` uses the official UVM tool to update that compatibility set together.
+
 ## Add a template
 
 1. Add its source as a workspace package under `packages/`.

@@ -165,9 +165,25 @@ pnpm lint
 - `pnpm test:app-css` 会构建 App 资源，并回归检查间距变量、`space-y` 反转公式、渐变文字 WebKit 前缀和 Android/iOS 平台声明
 - 样式条件编译示例使用 `@custom-variant wx` / `@custom-variant not-wx`
 - 请先把 `src/manifest.json` 中的 AppID 替换成自己的配置
-- 模板内保留了 `up:pkg` 和 `up:uniapp`，用于分别升级通用依赖和 `uni-app` 依赖
+- 模板内提供 `pnpm update:deps` 和 `pnpm update:uni-app`，用于分别升级通用依赖和 `uni-app` 依赖
 - 推荐在 VS Code 中安装 `Tailwind CSS IntelliSense`、ESLint、Stylelint
 - GitHub Actions 会构建 H5、App 和主要小程序目标，但不会执行 App 签名或模拟器启动
+
+## 依赖升级
+
+交互式升级除 uni-app 编译工具链之外的所有直接依赖：
+
+```bash
+pnpm update:deps
+```
+
+升级 DCloud 官方 UVM 管理的整套 uni-app 依赖：
+
+```bash
+pnpm update:uni-app
+```
+
+uni-app 的兼容性集合不仅包括 `@dcloudio/*`，还包括 `vue`、`vue-i18n`、`@vue/runtime-core`、`@vue/shared`、`vite` 和 `rollup`。不要用通用更新命令单独升级这些包；`update:uni-app` 会通过 UVM 让编译器相关版本保持一致。
 
 ## 项目级技能
 

@@ -27,6 +27,8 @@
     "build:mp-weixin": "node scripts/run-template.mjs @default build:mp-weixin",
     "lint": "node scripts/run-template.mjs @default lint",
     "lint:fix": "node scripts/run-template.mjs @default lint:fix",
+    "update:deps": "node scripts/run-template.mjs @default update:deps",
+    "update:uni-app": "node scripts/run-template.mjs @default update:uni-app",
     "template": "node scripts/run-template.mjs",
     "templates:matrix": "node scripts/ci-matrix.mjs",
     "test:hmr": "node scripts/run-template.mjs @default test:hmr",

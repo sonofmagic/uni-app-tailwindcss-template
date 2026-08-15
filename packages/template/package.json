@@ -54,8 +54,8 @@
     "test:app-css": "pnpm build:app && node scripts/app-css-smoke.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint ./src --fix",
-    "up:pkg": "pnpm up -rLi \"!@dcloudio/*\"",
-    "up:uniapp": "pnpx @dcloudio/uvm@latest"
+    "update:deps": "pnpm up --latest --interactive \"!@dcloudio/*\" \"!@vue/runtime-core\" \"!@vue/shared\" \"!rollup\" \"!vite\" \"!vue\" \"!vue-i18n\"",
+    "update:uni-app": "pnpm dlx @dcloudio/uvm@latest --manager pnpm"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5020320260806002",

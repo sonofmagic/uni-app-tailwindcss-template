@@ -20,6 +20,8 @@ Use `pnpm install` to install dependencies. `weapp-tailwindcss@5` handles Tailwi
 - `pnpm template @default open:dev`: open WeChat DevTools for the default template.
 - `pnpm lint`: run the default template's ESLint checks.
 - `pnpm lint:fix`: auto-fix lint issues in the default template.
+- `pnpm update:deps`: interactively update regular template dependencies while excluding the uni-app compatibility set.
+- `pnpm update:uni-app`: update the DCloud-managed uni-app compiler dependencies together through UVM.
 - `pnpm release`: record a pnpm native change intent for a publishable package.
 - `pnpm release:status`: preview pending package versions without modifying files.
 - `pnpm repo:doctor`: validate the repoctl and release configuration.

@@ -7,7 +7,15 @@ allowBuilds:
   core-js: true
   core-js-pure: true
   esbuild: true
+  msgpackr-extract: false
   vue-demi: true
 onlyBuiltDependencies:
   - '@weapp-tailwindcss/merge'
 minimumReleaseAge: 0
+versioning:
+  fixed:
+    - - create-uni-app-tailwindcss
+  ignore:
+    - uni-app-tailwindcss-template-default
+  changelog:
+    storage: repository

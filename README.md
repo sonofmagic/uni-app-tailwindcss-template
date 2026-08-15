@@ -1,6 +1,6 @@
-# uni-app-tailwindcss Monorepo
+# uni-app-tailwindcss-template
 
-This workspace holds the publishable `pnpm create uni-app-tailwindcss` initializer and its registered templates.
+This repository holds the publishable `pnpm create uni-app-tailwindcss` initializer and its registered templates. Source and releases are hosted at [sonofmagic/uni-app-tailwindcss-template](https://github.com/sonofmagic/uni-app-tailwindcss-template).
 
 ## Packages
 
@@ -39,3 +39,15 @@ The command copies the selected bundled template into `my-app`, rewrites the pac
 3. Run `pnpm create:build` and `pnpm test:e2e`.
 
 The create package bundles every registered template. GitHub Actions also derives its build and HMR matrices from the registry, so new templates do not require workflow edits.
+
+## Release
+
+Package versions and releases use pnpm native versioning with repoctl:
+
+```bash
+pnpm release
+pnpm release:status
+pnpm repo:doctor
+```
+
+Commit the generated change intent with the user-visible change. The release workflow creates a version PR from pending intents and publishes the merged version to npm with provenance.

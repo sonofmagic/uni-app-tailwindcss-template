@@ -1,4 +1,4 @@
-# uni-app-vite-vue3-tailwind-vscode-template
+# uni-app-tailwindcss-template
 
 `uni-app + Vite + Vue 3 + Tailwind CSS` 的 VS Code 多端模板。
 

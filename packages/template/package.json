@@ -1,5 +1,5 @@
 {
-  "name": "uni-app-vite-vue3-tailwind-vscode-template",
+  "name": "uni-app-tailwindcss-template-default",
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@11.21.0",

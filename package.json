@@ -1,7 +1,17 @@
 {
-  "name": "uni-app-tailwindcss-monorepo",
+  "name": "uni-app-tailwindcss-template",
   "private": true,
   "packageManager": "pnpm@11.21.0",
+  "author": "ice breaker <hi@sonofmagic.top>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sonofmagic/uni-app-tailwindcss-template.git"
+  },
+  "homepage": "https://uniapp.icebreaker.top",
+  "bugs": {
+    "url": "https://github.com/sonofmagic/uni-app-tailwindcss-template/issues"
+  },
   "engines": {
     "node": ">=22"
   },
@@ -9,7 +19,7 @@
     "dev": "node scripts/run-template.mjs @default dev",
     "dev:h5": "node scripts/run-template.mjs @default dev:h5",
     "dev:mp-weixin": "node scripts/run-template.mjs @default dev:mp-weixin",
-    "build": "node scripts/run-template.mjs @default build",
+    "build": "pnpm create:build && node scripts/run-template.mjs @default build",
     "build:h5": "node scripts/run-template.mjs @default build:h5 && node scripts/sync-h5-output.mjs",
     "build:app": "node scripts/run-template.mjs @default build:app",
     "build:mp-alipay": "node scripts/run-template.mjs @default build:mp-alipay",
@@ -23,10 +33,18 @@
     "test:app-css": "node scripts/run-template.mjs @default test:app-css",
     "create": "pnpm --dir packages/create-uni-app-tailwindcss start",
     "create:build": "pnpm --dir packages/create-uni-app-tailwindcss build",
+    "test": "pnpm test:e2e",
     "test:e2e": "pnpm --dir packages/create-uni-app-tailwindcss test:e2e",
-    "test:smoke": "pnpm lint && pnpm test:hmr:mp-weixin && pnpm test:app-css"
+    "test:smoke": "pnpm lint && pnpm test:hmr:mp-weixin && pnpm test:app-css",
+    "release": "pnpm change",
+    "release:status": "pnpm change status",
+    "version-packages": "pnpm version -r",
+    "publish-packages": "repo release stable publish",
+    "repo:doctor": "repo doctor"
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0"
+    "@playwright/test": "^1.55.0",
+    "repoctl": "5.1.1",
+    "vitest": "4.1.10"
   }
 }

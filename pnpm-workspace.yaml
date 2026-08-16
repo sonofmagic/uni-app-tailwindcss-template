@@ -9,6 +9,7 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: false
   vue-demi: true
+  workerd: true
 onlyBuiltDependencies:
   - '@weapp-tailwindcss/merge'
 minimumReleaseAge: 0

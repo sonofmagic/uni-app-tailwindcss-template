@@ -18,7 +18,10 @@ pnpm dev:h5
 pnpm dev:mp-weixin
 pnpm test:smoke
 pnpm test:e2e
+pnpm test:e2e:daily
 ```
+
+`test:e2e` is the fast scaffolding gate used on pull requests. `test:e2e:daily` creates a genuinely standalone project under the system temporary directory, installs its dependencies again, builds H5 and WeChat, and verifies assets, layout, and Pinia interaction in desktop and mobile viewports.
 
 ## Template HMR verification
 
@@ -30,10 +33,23 @@ pnpm test:hmr:h5
 pnpm test:hmr:mp-weixin
 pnpm test:hmr:app:android -- --device-id <android-device-id> --hbuilderx-cli <hbuilderx-cli>
 pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuilderx-cli>
+pnpm test:app-css:artifact
 pnpm test:hmr:all
 ```
 
-The checks temporarily inject an HMR probe into `src/components/WeappTailwindcss.vue` and restore the file after normal completion, failure, or interruption. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require HBuilderX plus the relevant Android or iOS tooling. CI only runs the headless artifact check; it does not replace real runtime verification.
+The checks temporarily inject an HMR probe into `src/components/WeappTailwindcss.vue` and restore the file after normal completion, failure, or interruption. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler plus the relevant Android or iOS tooling. `test:app-css:artifact` checks an existing App build without compiling it again. CI only runs the headless artifact check; it does not replace real runtime verification.
+
+## Daily comprehensive testing
+
+The `Quality` GitHub Actions workflow starts every day at 03:00 Asia/Shanghai. Separate jobs cover repository health, lint, the create CLI, five production targets, a Workers dry-run, fast and standalone-project E2E, and artifact-level WeChat HMR. Failed Playwright and HMR evidence is retained for seven days.
+
+Run the complementary local runtime suite at 03:10 with:
+
+```bash
+pnpm test:daily:runtime
+```
+
+The runner uses `caffeinate`, verifies H5, WeChat DevTools, iOS Simulator, and the single online Android device, then waits up to 45 minutes for that day's scheduled GitHub run. It only closes Simulator and HBuilderX when it started them. Missing tools, login, or devices produce `BLOCKED`; assertion failures produce `FAIL`. Reports are written to the ignored `packages/template/.hmr-artifacts/daily/summary.{json,md}`, with exit codes `0` for pass, `1` for failure, and `2` for blocked. Set `DAILY_IOS_DEVICE_ID` to pin the simulator, or pass `--skip-github` when validating only local runtimes.
 
 ## Create a new project
 

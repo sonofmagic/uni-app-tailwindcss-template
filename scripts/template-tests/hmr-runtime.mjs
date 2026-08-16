@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { createFixtureController, getFixtureState } from './hmr-fixture.mjs'
@@ -22,11 +23,15 @@ const supportedPlatforms = ['h5', 'mp-weixin', 'app-android', 'app-ios']
 const platforms = args.all ? supportedPlatforms : [args.platform]
 const results = []
 
+class ExternalBlockError extends Error {}
+
 let fixture
 let fatalError
 let environment = collectBaseEnvironment()
 let activeChild
 let activeChildStopSignal = 'SIGTERM'
+let activeCompilerChild
+let activeAppProject
 let activeProgram
 let activeBrowser
 let activePage
@@ -40,8 +45,9 @@ process.once('exit', () => fixture?.restoreSync())
 
 main().catch((error) => {
   fatalError = error instanceof Error ? error.message : String(error)
-  console.error(`\n[hmr-runtime] FAILED: ${error instanceof Error ? error.stack : String(error)}`)
-  process.exitCode = 1
+  const blocked = error instanceof ExternalBlockError
+  console.error(`\n[hmr-runtime] ${blocked ? 'BLOCKED' : 'FAILED'}: ${error instanceof Error ? error.stack : String(error)}`)
+  process.exitCode = blocked ? 2 : 1
 }).finally(async () => {
   await cleanup()
   if (results.length > 0 || fatalError) {
@@ -79,7 +85,8 @@ async function main() {
     }
     catch (error) {
       result.error = error instanceof Error ? error.message : String(error)
-      console.error(`[hmr-runtime] ${platform}: FAIL: ${result.error}`)
+      result.status = error instanceof ExternalBlockError ? 'BLOCKED' : 'FAIL'
+      console.error(`[hmr-runtime] ${platform}: ${result.status}: ${result.error}`)
       if (!args.all) {
         throw error
       }
@@ -192,34 +199,56 @@ async function runAppPlatform(platform, reportDir) {
   const deviceId = resolveDeviceId(platform)
   activeDeviceId = deviceId
   const cli = hbuilderxPaths().cli
+  const logs = []
+  activeAppProject = await fs.mkdtemp(path.join(tmpdir(), 'uni-app-hmr-app-'))
+  const env = {
+    ...process.env,
+    CHOKIDAR_INTERVAL: '200',
+    CHOKIDAR_USEPOLLING: 'true',
+    HMR_SMOKE_USE_POLLING: 'true',
+    UNI_OUTPUT_DIR: activeAppProject,
+  }
+  activeCompilerChild = spawnUni(['-p', 'app'], env)
+  collectLogs(activeCompilerChild, logs, `${platform}:compiler`)
+  await waitForOutput(activeCompilerChild, /Build complete\. Watching for changes|ready in/i, timeoutMs)
+
+  const appProject = activeAppProject
+  await waitForFile(path.join(appProject, 'manifest.json'), content => content.length > 0, timeoutMs)
+  const opened = spawnSync(cli, ['project', 'open', '--path', appProject], { cwd, encoding: 'utf8' })
+  if (opened.status !== 0) {
+    throw new Error(`HBuilderX could not open the compiled App project: ${(opened.stderr || opened.stdout).trim()}`)
+  }
   const launchArgs = [
     'launch',
     platform,
     '--project',
-    cwd,
+    appProject,
     '--deviceId',
     deviceId,
     '--playground',
     'standard',
+    '--continue-on-error',
+    'true',
   ]
   if (platform === 'app-ios') {
     launchArgs.push('--iosTarget', 'simulator')
   }
-  const logs = []
   activeChild = spawn(cli, launchArgs, {
     cwd,
     detached: true,
-    env: {
-      ...process.env,
-      CHOKIDAR_INTERVAL: '200',
-      CHOKIDAR_USEPOLLING: 'true',
-      HMR_SMOKE_USE_POLLING: 'true',
-    },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   activeChildStopSignal = 'SIGINT'
   collectLogs(activeChild, logs, platform)
   await waitForOutput(activeChild, /应用【.*】已启动|项目 \[.*\] 已启动|App Launch/i, timeoutMs)
+  if (platform === 'app-ios') {
+    await waitUntil(() => logs.some(entry => /App Launch at/i.test(entry.text)), timeoutMs, 500)
+    await sleep(1_000)
+    if (await iosExternalPromptVisible()) {
+      throw new ExternalBlockError('An iOS system or runtime prompt requires an unlocked interactive session')
+    }
+  }
 
   const initial = await waitForAppState(platform, 'initial')
   await captureAppScreenshot(platform, path.join(reportDir, 'initial.png'))
@@ -665,32 +694,44 @@ async function cleanupPlatform() {
     activeProgram = undefined
   }
   if (activeChild && activeChild.exitCode === null) {
-    try {
-      process.kill(-activeChild.pid, activeChildStopSignal)
-    }
-    catch {
-      activeChild.kill(activeChildStopSignal)
-    }
-    await Promise.race([new Promise(resolve => activeChild.once('exit', resolve)), sleep(8_000)])
-    if (activeChild.exitCode === null) {
-      try {
-        process.kill(-activeChild.pid, 'SIGKILL')
-      }
-      catch {
-        activeChild.kill('SIGKILL')
-      }
-      await Promise.race([new Promise(resolve => activeChild.once('exit', resolve)), sleep(3_000)])
-    }
+    await stopChild(activeChild, activeChildStopSignal)
     if (activeChildStopSignal === 'SIGINT') {
       await sleep(2_000)
     }
   }
+  if (activeCompilerChild && activeCompilerChild.exitCode === null) {
+    await stopChild(activeCompilerChild, 'SIGTERM')
+  }
   restoreAutomatorEnvironment?.()
   restoreAutomatorEnvironment = undefined
   await fs.rm(bridgeFile, { force: true })
+  if (activeAppProject) {
+    await fs.rm(activeAppProject, { recursive: true, force: true })
+  }
   activeDeviceId = undefined
   activeChild = undefined
+  activeCompilerChild = undefined
+  activeAppProject = undefined
   activeChildStopSignal = 'SIGTERM'
+}
+
+async function stopChild(child, signal) {
+  try {
+    process.kill(-child.pid, signal)
+  }
+  catch {
+    child.kill(signal)
+  }
+  await Promise.race([new Promise(resolve => child.once('exit', resolve)), sleep(8_000)])
+  if (child.exitCode === null) {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    }
+    catch {
+      child.kill('SIGKILL')
+    }
+    await Promise.race([new Promise(resolve => child.once('exit', resolve)), sleep(3_000)])
+  }
 }
 
 async function cleanup() {
@@ -823,6 +864,30 @@ async function dismissRuntimeWarning(platform) {
     spawnSync('adb', ['-s', activeDeviceId, 'shell', 'input', 'tap', String(x), String(y)])
     await sleep(500)
   }
+}
+
+async function iosExternalPromptVisible() {
+  const screenshotPath = path.join(reportRoot, '.ios-permission.png')
+  const screenshot = spawnSync('xcrun', ['simctl', 'io', activeDeviceId, 'screenshot', screenshotPath], { encoding: 'utf8' })
+  if (screenshot.status !== 0) return false
+  const visionScript = `
+import AppKit
+import Vision
+let image = NSImage(contentsOfFile: CommandLine.arguments[1])!
+var rect = NSRect(origin: .zero, size: image.size)
+let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil)!
+let request = VNRecognizeTextRequest()
+request.recognitionLevel = .accurate
+request.recognitionLanguages = ["zh-Hans", "en-US"]
+try VNImageRequestHandler(cgImage: cgImage).perform([request])
+print(request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\\n") ?? "")
+`
+  const recognized = spawnSync('swift', ['-e', visionScript, screenshotPath], {
+    encoding: 'utf8',
+    maxBuffer: 4 * 1024 * 1024,
+  }).stdout
+  await fs.rm(screenshotPath, { force: true })
+  return /要求.*不跟踪|允许.*跟踪|Ask App Not to Track|Allow.*Track|不匹配的版本|version.*mismatch/i.test(recognized)
 }
 
 async function readDeviceAppResources(platform) {

@@ -14,9 +14,12 @@ Use `pnpm install` to install dependencies. `weapp-tailwindcss@5` handles Tailwi
 - `pnpm build:h5`: create an H5 production build.
 - `pnpm create:build`: build the initializer and bundle every registered template.
 - `pnpm test:e2e`: verify scaffolding and the generated H5 application with Playwright.
+- `pnpm test:e2e:daily`: generate a standalone project, install it outside the workspace, build H5 and WeChat, and run desktop/mobile browser assertions.
+- `pnpm test:daily:runtime`: run the local H5, WeChat, iOS, Android, and scheduled GitHub daily lanes; reports use exit codes 0/1/2 for pass/fail/blocked.
 - `pnpm test:hmr:artifact:mp-weixin`: run the headless Mini Program artifact HMR check used by CI.
 - `pnpm test:hmr:h5`: verify H5 HMR in a real browser and write evidence under `packages/template/.hmr-artifacts/`.
 - `pnpm test:hmr:mp-weixin`: verify HMR against a logged-in WeChat DevTools runtime.
+- `pnpm test:app-css:artifact`: verify App CSS compatibility from an existing `build:app` output without rebuilding it.
 - `pnpm template @default open:dev`: open WeChat DevTools for the default template.
 - `pnpm lint`: run the default template's ESLint checks.
 - `pnpm lint:fix`: auto-fix lint issues in the default template.
@@ -39,6 +42,8 @@ Playwright tests live in `packages/create-uni-app-tailwindcss/tests/` and cover 
 Use `pnpm test:hmr:artifact:mp-weixin` for the deterministic headless CI path. It applies the shared probe fixture atomically, verifies transformed template/script/style artifacts before and after an incremental compile, and restores the source even after interruption.
 
 Runtime verification remains platform-specific: `pnpm test:hmr:h5` uses Playwright, `pnpm test:hmr:mp-weixin` requires logged-in WeChat DevTools, and the App scripts require the matching HBuilderX CLI plus a running device or simulator. Reports, screenshots, and logs live under ignored `packages/template/.hmr-artifacts/`; do not commit them or bundle them into generated projects.
+
+The daily local runner starts at 03:10 Asia/Shanghai after the 03:00 GitHub `Quality` schedule. It may boot the selected iOS Simulator and open HBuilderX, but must only stop applications or simulators it started. Use `DAILY_IOS_DEVICE_ID` to pin iOS; Android requires exactly one already-online device, and WeChat login remains a manual prerequisite. Treat missing external runtime state as `BLOCKED`, not a test assertion failure.
 
 ## Commit & Pull Request Guidelines
 

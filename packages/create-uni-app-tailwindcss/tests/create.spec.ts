@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -32,6 +32,7 @@ for (const template of registry.templates) {
       expect(pkg.devDependencies.playwright).toBeUndefined()
       expect(pkg.devDependencies.pngjs).toBeUndefined()
       await expectFile(path.join(projectDir, '.npmrc'))
+      await expectFile(path.join(projectDir, 'pnpm-workspace.yaml'))
       await expectFile(path.join(projectDir, 'src', 'pages.json'))
       await expectFile(path.join(projectDir, 'vite.config.ts'))
       await expectMissing(path.join(projectDir, '.hmr-artifacts'))
@@ -54,6 +55,39 @@ test('rejects an unknown template', async () => {
   expect(result.output).toContain('Unknown template "missing-template"')
 })
 
+test('uses the default template when --template is omitted', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'uni-app-tailwindcss-default-'))
+  const projectDir = path.join(dir, 'default-app')
+  try {
+    await runCommand('pnpm', [
+      '--dir', packageRoot, 'run', 'start', '--', projectDir, '--pm=pnpm',
+    ], packageRoot)
+    const pkg = JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8'))
+    expect(pkg.name).toBe('default-app')
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('preserves an existing directory when overwrite is not confirmed', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'uni-app-tailwindcss-existing-'))
+  const projectDir = path.join(dir, 'existing-app')
+  const marker = path.join(projectDir, 'keep.txt')
+  try {
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(marker, 'keep\n')
+    const result = await runCommand('pnpm', [
+      '--dir', packageRoot, 'run', 'start', '--', projectDir, '--template=default',
+    ], packageRoot, false)
+    expect(result.code).toBe(0)
+    expect(await readFile(marker, 'utf8')).toBe('keep\n')
+  }
+  finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
 async function expectFile(filePath: string) {
   const content = await readFile(filePath, 'utf8')
   expect(content.length).toBeGreaterThan(0)
@@ -68,7 +102,7 @@ function runCommand(command: string, args: string[], cwd: string, inherit = true
     let output = ''
     const child = spawn(command, args, {
       cwd,
-      stdio: inherit ? 'inherit' : 'pipe',
+      stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         FORCE_COLOR: '0',

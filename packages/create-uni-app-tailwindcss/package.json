@@ -42,6 +42,7 @@
     "prepack": "pnpm run build",
     "start": "pnpm run build && node dist/cli.js",
     "test:e2e": "playwright test",
+    "test:e2e:daily": "node scripts/run-daily-e2e.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

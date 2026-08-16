@@ -1,6 +1,9 @@
-name: HMR Multi-Platform
+name: Quality
 
 on:
+  schedule:
+    # 03:00 Asia/Shanghai (UTC+8)
+    - cron: '0 19 * * *'
   pull_request:
     paths:
       - packages/**
@@ -27,6 +30,13 @@ on:
       - .github/workflows/hmr-multi-platform.yml
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   templates:
     name: Resolve templates
@@ -44,6 +54,115 @@ jobs:
           matrix=$(node scripts/ci-matrix.mjs)
           echo "build=$(node -e 'const data=JSON.parse(process.argv[1]); console.log(JSON.stringify(data.build))' "$matrix")" >> "$GITHUB_OUTPUT"
           echo "hmr=$(node -e 'const data=JSON.parse(process.argv[1]); console.log(JSON.stringify(data.hmr))' "$matrix")" >> "$GITHUB_OUTPUT"
+
+  repository:
+    name: Repository health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate repository
+        run: pnpm repo:doctor
+
+      - name: Preview release plan
+        run: pnpm release:status
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint template
+        run: pnpm lint
+
+  cli:
+    name: Create CLI typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and build create CLI
+        run: pnpm create:build
+
+  fast-e2e:
+    name: Fast scaffolding E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
+
+      - name: Run fast E2E
+        run: pnpm test:e2e
+
+      - name: Upload fast E2E evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: fast-e2e-${{ github.run_id }}
+          path: |
+            packages/create-uni-app-tailwindcss/playwright-report
+            packages/create-uni-app-tailwindcss/test-results
+          if-no-files-found: warn
+          retention-days: 7
 
   build:
     name: Build ${{ matrix.template }} / ${{ matrix.target }}
@@ -71,32 +190,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        if: matrix.target == 'h5'
-        run: pnpm template ${{ matrix.template }} lint
-
       - name: Build
         run: pnpm template ${{ matrix.template }} ${{ matrix.script }}
 
-      - name: Sync Workers asset output
-        if: matrix.isDefault && matrix.target == 'h5'
-        run: node scripts/sync-h5-output.mjs ${{ matrix.template }}
-
-      - name: Verify Workers asset output
-        if: matrix.isDefault && matrix.target == 'h5'
-        run: test -f dist/build/h5/index.html
-
-      - name: Validate Workers deployment
-        if: matrix.isDefault && matrix.target == 'h5'
-        run: pnpm workers:check
-
-      - name: Install Playwright browser
-        if: matrix.isDefault && matrix.target == 'h5'
-        run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
-
-      - name: Create CLI E2E
-        if: matrix.isDefault && matrix.target == 'h5'
-        run: pnpm test:e2e
+      - name: Verify App CSS compatibility
+        if: matrix.isDefault && matrix.target == 'app'
+        run: pnpm template:test ${{ matrix.template }} test:app-css:artifact
 
   hmr:
     name: HMR ${{ matrix.template }} / ${{ matrix.target }}
@@ -126,3 +225,108 @@ jobs:
 
       - name: Run Tailwind artifact HMR smoke
         run: pnpm template:test ${{ matrix.template }} ${{ matrix.script }} -- --timeout 240000
+
+      - name: Upload HMR evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hmr-${{ matrix.template }}-${{ matrix.target }}-${{ github.run_id }}
+          path: packages/template/.hmr-artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+  workers:
+    name: H5 Workers dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build H5
+        run: pnpm build:h5
+
+      - name: Verify Workers asset output
+        run: test -f dist/build/h5/index.html
+
+      - name: Validate Workers deployment
+        run: pnpm workers:check
+
+  daily-e2e:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Generated project daily E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
+
+      - name: Run generated project E2E
+        run: pnpm test:e2e:daily
+
+      - name: Upload generated project E2E evidence
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: generated-project-e2e-${{ github.run_id }}
+          path: |
+            packages/create-uni-app-tailwindcss/playwright-report
+            packages/create-uni-app-tailwindcss/test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+  summary:
+    if: always()
+    name: Quality summary
+    needs:
+      - templates
+      - repository
+      - lint
+      - cli
+      - fast-e2e
+      - build
+      - hmr
+      - workers
+      - daily-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write job summary
+        env:
+          RESULTS: >-
+            {"templates":"${{ needs.templates.result }}","repository":"${{ needs.repository.result }}","lint":"${{ needs.lint.result }}","cli":"${{ needs.cli.result }}","fast-e2e":"${{ needs.fast-e2e.result }}","build":"${{ needs.build.result }}","hmr":"${{ needs.hmr.result }}","workers":"${{ needs.workers.result }}","daily-e2e":"${{ needs.daily-e2e.result }}"}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const results = JSON.parse(process.env.RESULTS)
+          const lines = ['# Quality summary', '', '| Job | Result |', '| --- | --- |']
+          for (const [job, result] of Object.entries(results)) lines.push(`| ${job} | ${result} |`)
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`)
+          if (Object.values(results).some(result => result === 'failure' || result === 'cancelled')) process.exitCode = 1
+          NODE

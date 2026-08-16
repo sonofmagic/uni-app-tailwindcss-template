@@ -14,7 +14,10 @@ const template = getTemplate(registry, templateId === '@default' ? undefined : t
 const templateRoot = resolveTemplateSource(template)
 const testRoot = fileURLToPath(new URL('./template-tests/', import.meta.url))
 
-if (testName === 'test:app-css') {
+if (testName === 'test:app-css:artifact') {
+  await runTest('app-css-smoke.mjs', args)
+}
+else if (testName === 'test:app-css') {
   await run(packageManagerCommand(), ['--dir', templateRoot, 'run', 'build:app'])
   await runTest('app-css-smoke.mjs', args)
 }
@@ -32,7 +35,8 @@ else if (testName.startsWith('test:hmr:artifact:')) {
   await runTest('hmr-smoke.mjs', ['--platform', target, '--script', `dev:${target}`, ...args])
 }
 else if (testName.startsWith('test:hmr:')) {
-  const platform = testName.slice('test:hmr:'.length)
+  const requestedPlatform = testName.slice('test:hmr:'.length)
+  const platform = requestedPlatform.replace(/^app:/, 'app-')
   const supportedPlatforms = new Set(['h5', 'mp-weixin', 'app-android', 'app-ios'])
   if (!supportedPlatforms.has(platform)) {
     throw new Error(`Unsupported HMR runtime platform: ${platform}`)

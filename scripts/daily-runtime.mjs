@@ -2,13 +2,16 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream, promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as wait } from 'node:timers/promises'
+import { runCleanup } from '../packages/create-uni-app-tailwindcss/scripts/daily-contract.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const templateRoot = path.join(repoRoot, 'packages/template')
+const createPackageRoot = path.join(repoRoot, 'packages/create-uni-app-tailwindcss')
+const hmrRuntimeScript = path.join(repoRoot, 'scripts/template-tests/hmr-runtime.mjs')
 const args = parseArgs(process.argv.slice(2))
 const reportRoot = path.resolve(repoRoot, args['report-dir'] ?? 'packages/template/.hmr-artifacts/daily')
 const results = []
@@ -16,7 +19,8 @@ const cleanups = []
 const activeChildren = new Set()
 let interrupted = false
 let interruptedSignal
-let hbuilderxState
+const hbuilderxStates = new Map()
+const runtimeProjects = new Map()
 
 const caffeinatedExitCode = await runUnderCaffeinate()
 if (caffeinatedExitCode !== undefined) {
@@ -33,10 +37,21 @@ async function main() {
   await fs.mkdir(reportRoot, { recursive: true })
 
   try {
-    await runLaneSafely('h5', runH5Lane)
-    if (!interrupted) await runLaneSafely('mp-weixin', runWeChatLane)
-    if (!interrupted) await runLaneSafely('app-ios', runIosLane)
-    if (!interrupted) await runLaneSafely('app-android', runAndroidLane)
+    await prepareRuntimeProjects()
+    for (const source of ['candidate', 'latest']) {
+      const projectRoot = runtimeProjects.get(source)
+      if (interrupted) break
+      if (!projectRoot) {
+        for (const platform of ['h5', 'mp-weixin', 'app-ios', 'app-android']) {
+          recordLane(`${source}:${platform}`, 'BLOCKED', `${source} project preparation failed`, `Review ${path.relative(repoRoot, path.join(reportRoot, `${source}-prepare.log`))}`)
+        }
+        continue
+      }
+      await runLaneSafely(`${source}:h5`, () => runH5Lane(source, projectRoot))
+      if (!interrupted) await runLaneSafely(`${source}:mp-weixin`, () => runWeChatLane(source, projectRoot))
+      if (!interrupted) await runLaneSafely(`${source}:app-ios`, () => runIosLane(source, projectRoot))
+      if (!interrupted) await runLaneSafely(`${source}:app-android`, () => runAndroidLane(source, projectRoot))
+    }
     if (interrupted) {
       recordLane('runner', 'BLOCKED', `Interrupted by ${interruptedSignal}`)
     }
@@ -61,44 +76,96 @@ async function main() {
   }
 }
 
-async function runH5Lane() {
+async function prepareRuntimeProjects() {
+  const temporaryRoot = await fs.mkdtemp(path.join(tmpdir(), 'uni-app-tailwindcss-runtime-'))
+  cleanups.push(async () => fs.rm(temporaryRoot, { recursive: true, force: true }))
+  for (const source of ['candidate', 'latest']) {
+    if (interrupted) return
+    const sourceRoot = path.join(temporaryRoot, source)
+    const projectRoot = path.join(sourceRoot, 'daily-runtime-app')
+    const logPath = path.join(reportRoot, `${source}-prepare.log`)
+    await fs.mkdir(sourceRoot, { recursive: true })
+    try {
+      if (source === 'candidate') {
+        const packRoot = path.join(sourceRoot, 'pack')
+        await fs.mkdir(packRoot, { recursive: true })
+        await requireCommandSuccess('pnpm', ['pack', '--pack-destination', packRoot], createPackageRoot, logPath)
+        const tarballs = (await fs.readdir(packRoot)).filter(file => file.endsWith('.tgz'))
+        if (tarballs.length !== 1) throw new Error(`Expected one candidate tarball, found ${tarballs.length}`)
+        await requireCommandSuccess('pnpm', ['dlx', path.join(packRoot, tarballs[0]), projectRoot, '--template=default', '--pm=pnpm'], sourceRoot, logPath, true)
+      }
+      else {
+        await requireCommandSuccess('pnpm', ['create', 'uni-app-tailwindcss@latest', projectRoot, '--template=default', '--pm=pnpm'], sourceRoot, logPath)
+      }
+      let installError
+      try {
+        await requireCommandSuccess('pnpm', ['install'], projectRoot, logPath, true)
+      }
+      catch (error) {
+        installError = error
+        await requireCommandSuccess('pnpm', ['install', '--ignore-scripts'], projectRoot, logPath, true)
+      }
+      try {
+        await requireCommandSuccess('pnpm', ['install', '--frozen-lockfile'], projectRoot, logPath, true)
+      }
+      catch (error) {
+        installError ||= error
+        await requireCommandSuccess('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts'], projectRoot, logPath, true)
+      }
+      runtimeProjects.set(source, projectRoot)
+      recordLane(
+        `${source}:prepare`,
+        installError ? 'FAIL' : 'PASS',
+        installError ? `Normal install failed; diagnostic --ignore-scripts install completed: ${installError.message}` : 'Created and installed an isolated runtime project',
+        installError ? `Review ${path.relative(repoRoot, logPath)}` : undefined,
+        { projectRoot },
+      )
+    }
+    catch (error) {
+      recordLane(`${source}:prepare`, 'FAIL', error instanceof Error ? error.message : String(error), `Review ${path.relative(repoRoot, logPath)}`)
+    }
+  }
+}
+
+async function runH5Lane(source, projectRoot) {
   const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   if (process.platform !== 'darwin' || !(await exists(chrome))) {
-    recordLane('h5', 'BLOCKED', `Google Chrome is unavailable at ${chrome}`, 'Install Google Chrome')
+    recordLane(`${source}:h5`, 'BLOCKED', `Google Chrome is unavailable at ${chrome}`, 'Install Google Chrome')
     return
   }
-  await runTestLane('h5', ['test:hmr:h5', '--', '--report-dir', path.join(reportRoot, 'hmr-h5')])
+  await runRuntimeTestLane(source, 'h5', projectRoot)
 }
 
-async function runWeChatLane() {
+async function runWeChatLane(source, projectRoot) {
   const devtoolsCli = '/Applications/wechatwebdevtools.app/Contents/MacOS/cli'
   if (process.platform !== 'darwin' || !(await exists(devtoolsCli))) {
-    recordLane('mp-weixin', 'BLOCKED', `WeChat DevTools is unavailable at ${devtoolsCli}`, 'Install WeChat DevTools and enable its service port')
+    recordLane(`${source}:mp-weixin`, 'BLOCKED', `WeChat DevTools is unavailable at ${devtoolsCli}`, 'Install WeChat DevTools and enable its service port')
     return
   }
 
-  const doctor = await execCapture('pnpm', ['--dir', templateRoot, 'exec', 'weapp', 'doctor'], repoRoot)
+  const doctor = await execCapture('pnpm', ['exec', 'weapp', 'doctor'], projectRoot)
   if (doctor.code !== 0) {
-    recordLane('mp-weixin', 'BLOCKED', 'WeChat DevTools login is expired or its service port is unavailable', 'pnpm --dir packages/template weapp:login')
+    recordLane(`${source}:mp-weixin`, 'BLOCKED', 'WeChat DevTools login is expired or its service port is unavailable', `pnpm --dir ${projectRoot} weapp:login`)
     return
   }
-  await runTestLane('mp-weixin', ['test:hmr:mp-weixin', '--', '--report-dir', path.join(reportRoot, 'hmr-mp-weixin')])
+  await runRuntimeTestLane(source, 'mp-weixin', projectRoot)
 }
 
-async function runIosLane() {
+async function runIosLane(source, projectRoot) {
+  const lane = `${source}:app-ios`
   if (process.platform !== 'darwin' || !commandExists('xcrun')) {
-    recordLane('app-ios', 'BLOCKED', 'Xcode command-line tools are unavailable', 'xcode-select --install')
+    recordLane(lane, 'BLOCKED', 'Xcode command-line tools are unavailable', 'xcode-select --install')
     return
   }
 
   const selection = await selectIosSimulator()
   if (selection.error) {
-    recordLane('app-ios', 'BLOCKED', selection.error, 'Set DAILY_IOS_DEVICE_ID to an available iOS Simulator UDID')
+    recordLane(lane, 'BLOCKED', selection.error, 'Set DAILY_IOS_DEVICE_ID to an available iOS Simulator UDID')
     return
   }
-  const hbuilderx = await ensureHBuilderX()
+  const hbuilderx = await ensureHBuilderX(projectRoot)
   if (hbuilderx.error) {
-    recordLane('app-ios', 'BLOCKED', hbuilderx.error, 'Install the HBuilderX version matching @dcloudio/vite-plugin-uni')
+    recordLane(lane, 'BLOCKED', hbuilderx.error, 'Install the HBuilderX version matching @dcloudio/vite-plugin-uni')
     return
   }
 
@@ -108,7 +175,7 @@ async function runIosLane() {
   if (simulator.state !== 'Booted') {
     const boot = await execCapture('xcrun', ['simctl', 'boot', simulator.udid], repoRoot)
     if (boot.code !== 0 && !/current state: Booted/i.test(boot.output)) {
-      recordLane('app-ios', 'BLOCKED', tail(boot.output) || `Could not boot iOS Simulator ${simulator.udid}`, `xcrun simctl boot ${simulator.udid}`)
+      recordLane(lane, 'BLOCKED', tail(boot.output) || `Could not boot iOS Simulator ${simulator.udid}`, `xcrun simctl boot ${simulator.udid}`)
       return
     }
     bootedByRunner = true
@@ -117,7 +184,7 @@ async function runIosLane() {
 
   const bootStatus = await execCapture('xcrun', ['simctl', 'bootstatus', simulator.udid, '-b'], repoRoot)
   if (bootStatus.code !== 0) {
-    recordLane('app-ios', 'BLOCKED', tail(bootStatus.output) || `iOS Simulator ${simulator.udid} did not finish booting`, `xcrun simctl bootstatus ${simulator.udid} -b`)
+    recordLane(lane, 'BLOCKED', tail(bootStatus.output) || `iOS Simulator ${simulator.udid} did not finish booting`, `xcrun simctl bootstatus ${simulator.udid} -b`)
     return
   }
 
@@ -128,15 +195,15 @@ async function runIosLane() {
     }
   }
 
-  await runTestLane('app-ios', [
-    'test:hmr:app:ios', '--', '--device-id', simulator.udid,
-    '--hbuilderx-cli', hbuilderx.cli, '--report-dir', path.join(reportRoot, 'hmr-app-ios'),
+  await runRuntimeTestLane(source, 'app-ios', projectRoot, [
+    '--device-id', simulator.udid, '--hbuilderx-cli', hbuilderx.cli,
   ], { device: `${simulator.name} (${simulator.udid})`, bootedByRunner })
 }
 
-async function runAndroidLane() {
+async function runAndroidLane(source, projectRoot) {
+  const lane = `${source}:app-android`
   if (!commandExists('adb')) {
-    recordLane('app-android', 'BLOCKED', 'adb is unavailable', 'Install Android platform-tools and connect exactly one device')
+    recordLane(lane, 'BLOCKED', 'adb is unavailable', 'Install Android platform-tools and connect exactly one device')
     return
   }
   const devicesResult = await execCapture('adb', ['devices'], repoRoot)
@@ -144,18 +211,17 @@ async function runAndroidLane() {
     .filter(line => /\tdevice\s*$/.test(line))
     .map(line => line.split('\t')[0])
   if (devices.length !== 1) {
-    recordLane('app-android', 'BLOCKED', `Expected exactly one online Android device, found ${devices.length}: ${devices.join(', ') || 'none'}`, 'adb devices')
+    recordLane(lane, 'BLOCKED', `Expected exactly one online Android device, found ${devices.length}: ${devices.join(', ') || 'none'}`, 'adb devices')
     return
   }
 
-  const hbuilderx = await ensureHBuilderX()
+  const hbuilderx = await ensureHBuilderX(projectRoot)
   if (hbuilderx.error) {
-    recordLane('app-android', 'BLOCKED', hbuilderx.error, 'Install the HBuilderX version matching @dcloudio/vite-plugin-uni')
+    recordLane(lane, 'BLOCKED', hbuilderx.error, 'Install the HBuilderX version matching @dcloudio/vite-plugin-uni')
     return
   }
-  await runTestLane('app-android', [
-    'test:hmr:app:android', '--', '--device-id', devices[0],
-    '--hbuilderx-cli', hbuilderx.cli, '--report-dir', path.join(reportRoot, 'hmr-app-android'),
+  await runRuntimeTestLane(source, 'app-android', projectRoot, [
+    '--device-id', devices[0], '--hbuilderx-cli', hbuilderx.cli,
   ], { device: devices[0] })
 }
 
@@ -217,11 +283,15 @@ async function runLaneSafely(name, lane) {
   }
 }
 
-async function runTestLane(name, commandArgs, details = {}) {
+async function runRuntimeTestLane(source, platform, projectRoot, extraArgs = [], details = {}) {
+  const name = `${source}:${platform}`
   const startedAt = new Date().toISOString()
   const started = Date.now()
-  const logPath = path.join(reportRoot, `${name}.log`)
-  const result = await runLogged('pnpm', commandArgs, repoRoot, logPath)
+  const sourceReportDir = path.join(reportRoot, source, platform)
+  const logPath = path.join(reportRoot, `${source}-${platform}.log`)
+  const result = await runLogged(process.execPath, [
+    hmrRuntimeScript, '--platform', platform, '--report-dir', sourceReportDir, ...extraArgs,
+  ], projectRoot, logPath)
   if (result.code === 0) {
     recordLane(name, 'PASS', 'Runtime HMR assertions passed', undefined, { ...details, startedAt, durationMs: Date.now() - started, logPath })
   }
@@ -255,14 +325,13 @@ async function selectIosSimulator() {
   return { error: `Could not select one recently used iOS Simulator from ${devices.length} available devices` }
 }
 
-async function ensureHBuilderX() {
-  if (hbuilderxState) return hbuilderxState
-  const compilerPackage = JSON.parse(await fs.readFile(path.join(templateRoot, 'node_modules/@dcloudio/vite-plugin-uni/package.json'), 'utf8'))
+async function ensureHBuilderX(projectRoot) {
+  const compilerPackage = JSON.parse(await fs.readFile(path.join(projectRoot, 'node_modules/@dcloudio/vite-plugin-uni/package.json'), 'utf8'))
   const compilerVersion = compilerPackage['uni-app']?.compilerVersion
   if (!compilerVersion) {
-    hbuilderxState = { error: 'Could not determine the uni-app compiler version from @dcloudio/vite-plugin-uni' }
-    return hbuilderxState
+    return { error: 'Could not determine the uni-app compiler version from @dcloudio/vite-plugin-uni' }
   }
+  if (hbuilderxStates.has(compilerVersion)) return hbuilderxStates.get(compilerVersion)
   const candidates = [
     process.env.HBUILDERX_CLI_PATH,
     '/Applications/HBuilderX.app/Contents/MacOS/cli',
@@ -276,15 +345,17 @@ async function ensureHBuilderX() {
     installed.push({ appPath, cli, version })
   }
   if (installed.length === 0) {
-    hbuilderxState = { error: `No HBuilderX CLI found in ${candidates.join(', ')}` }
-    return hbuilderxState
+    const state = { error: `No HBuilderX CLI found in ${candidates.join(', ')}` }
+    hbuilderxStates.set(compilerVersion, state)
+    return state
   }
   const selected = installed.find(candidate => candidate.version === compilerVersion || candidate.version.startsWith(`${compilerVersion}.`))
   if (!selected) {
-    hbuilderxState = {
+    const state = {
       error: `uni-app compiler ${compilerVersion} requires a matching HBuilderX; installed: ${installed.map(candidate => `${path.basename(candidate.appPath)} ${candidate.version}`).join(', ')}`,
     }
-    return hbuilderxState
+    hbuilderxStates.set(compilerVersion, state)
+    return state
   }
 
   const { appPath, cli } = selected
@@ -292,20 +363,29 @@ async function ensureHBuilderX() {
   if (!wasRunning) {
     const opened = await execCapture('open', ['-a', appPath], repoRoot)
     if (opened.code !== 0) {
-      hbuilderxState = { error: tail(opened.output) || `Could not open ${appPath}` }
-      return hbuilderxState
+      const state = { error: tail(opened.output) || `Could not open ${appPath}` }
+      hbuilderxStates.set(compilerVersion, state)
+      return state
     }
     const appName = path.basename(appPath, '.app')
     cleanups.push(async () => quitApplication(appName))
     await wait(3_000)
   }
-  hbuilderxState = { cli, startedByRunner: !wasRunning }
-  return hbuilderxState
+  const state = { cli, startedByRunner: !wasRunning }
+  hbuilderxStates.set(compilerVersion, state)
+  return state
 }
 
-async function runLogged(command, commandArgs, cwd, logPath) {
+async function requireCommandSuccess(command, commandArgs, cwd, logPath, append = false) {
+  const result = await runLogged(command, commandArgs, cwd, logPath, append)
+  if (result.signal || result.code !== 0) {
+    throw new Error(`${command} exited with ${result.signal ?? result.code ?? 'unknown status'}`)
+  }
+}
+
+async function runLogged(command, commandArgs, cwd, logPath, append = false) {
   await fs.mkdir(path.dirname(logPath), { recursive: true })
-  const log = createWriteStream(logPath, { flags: 'w' })
+  const log = createWriteStream(logPath, { flags: append ? 'a' : 'w' })
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
       cwd,
@@ -396,12 +476,8 @@ function overallStatus() {
 
 async function cleanup() {
   for (const child of activeChildren) stopChild(child)
-  for (const action of cleanups.reverse()) {
-    try {
-      await action()
-    }
-    catch {}
-  }
+  await runCleanup(cleanups)
+  cleanups.length = 0
 }
 
 function installSignalHandler(signal) {

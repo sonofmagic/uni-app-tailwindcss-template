@@ -21,7 +21,7 @@ pnpm test:e2e
 pnpm test:e2e:daily
 ```
 
-`test:e2e` is the fast scaffolding gate used on pull requests. `test:e2e:daily` creates a genuinely standalone project under the system temporary directory, installs its dependencies again, builds H5 and WeChat, and verifies assets, layout, and Pinia interaction in desktop and mobile viewports.
+`test:e2e` is the fast scaffolding gate used on pull requests. `test:e2e:daily` checks both the locally packed candidate and npm `latest` by default; pass `--source candidate|latest|all` to select a source. Each source is created with its real create command in a system temporary directory, then goes through independent install and frozen reinstall, normal edits, lint, H5 development/HMR, incremental WeChat compilation, five production targets, static H5 serving, and a side-effect-free Workers dry-run.
 
 ## Template HMR verification
 
@@ -37,11 +37,15 @@ pnpm test:app-css:artifact
 pnpm test:hmr:all
 ```
 
-The checks temporarily inject an HMR probe into `src/components/WeappTailwindcss.vue` and restore the file after normal completion, failure, or interruption. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler plus the relevant Android or iOS tooling. `test:app-css:artifact` checks an existing App build without compiling it again. CI only runs the headless artifact check; it does not replace real runtime verification.
+The checks create a test-owned temporary route and touch the Tailwind entry directly, then restore every source file after normal completion, failure, or interruption. The public template contains no HMR probes, bridges, or QA scripts. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler plus the relevant Android or iOS tooling. `test:app-css:artifact` checks an existing App build without compiling it again. CI only runs the headless artifact check; it does not replace real runtime verification.
 
 ## Daily comprehensive testing
 
-The `Quality` GitHub Actions workflow starts every day at 03:00 Asia/Shanghai. Separate jobs cover repository health, lint, the create CLI, five production targets, a Workers dry-run, fast and standalone-project E2E, and artifact-level WeChat HMR. Failed Playwright and HMR evidence is retained for seven days.
+The `Quality` GitHub Actions workflow starts every day at 03:00 Asia/Shanghai. Separate jobs cover repository health, lint, the create CLI, five production targets, a Workers dry-run, fast E2E, and artifact-level WeChat HMR. The daily user journey runs as a `candidate/latest × Node 22/24` matrix. A contract job requires every declared scenario to execute and compares normalized files, scripts, and dependency fingerprints between the candidate and npm latest. Latest drift or a broken public package is a strict `FAIL`; evidence is retained for seven days.
+
+Lifecycle coverage of 100% means `required scenarios executed / required scenarios = 100%`, not line coverage or an exhaustive set of all possible combinations. A `BLOCKED` scenario counts as executed but does not make the suite pass. Any silent `SKIP` or missing scenario fails the contract.
+
+The current npm `create-uni-app-tailwindcss@latest` (`0.1.0`) still emits the old QA scripts, so the first latest canary is expected to be a strict `FAIL`. The tests never publish or upload a real application.
 
 Run the complementary local runtime suite at 03:10 with:
 
@@ -49,7 +53,7 @@ Run the complementary local runtime suite at 03:10 with:
 pnpm test:daily:runtime
 ```
 
-The runner uses `caffeinate`, verifies H5, WeChat DevTools, iOS Simulator, and the single online Android device, then waits up to 45 minutes for that day's scheduled GitHub run. It only closes Simulator and HBuilderX when it started them. Missing tools, login, or devices produce `BLOCKED`; assertion failures produce `FAIL`. Reports are written to the ignored `packages/template/.hmr-artifacts/daily/summary.{json,md}`, with exit codes `0` for pass, `1` for failure, and `2` for blocked. Set `DAILY_IOS_DEVICE_ID` to pin the simulator, or pass `--skip-github` when validating only local runtimes.
+The runner uses `caffeinate`, creates and independently installs candidate and latest projects, then runs H5, WeChat DevTools, iOS Simulator, and the single online Android device serially for each source. It finally waits up to 45 minutes for that day's scheduled GitHub run. It only closes Simulator and HBuilderX when it started them. Missing tools, login, or devices produce `BLOCKED`; create, build, or assertion failures produce `FAIL`. Reports include source, platform, repair commands, and the GitHub run URL under the ignored `packages/template/.hmr-artifacts/daily/summary.{json,md}`, with exit codes `0` for pass, `1` for failure, and `2` for blocked. Set `DAILY_IOS_DEVICE_ID` to pin the simulator, or pass `--skip-github` when validating only local runtimes.
 
 ## Create a new project
 

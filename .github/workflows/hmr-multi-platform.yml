@@ -266,9 +266,18 @@ jobs:
 
   daily-e2e:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    name: Generated project daily E2E
+    name: User journey / ${{ matrix.source }} / Node ${{ matrix.node }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        source:
+          - candidate
+          - latest
+        node:
+          - 22
+          - 24
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -279,7 +288,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
@@ -288,17 +297,43 @@ jobs:
       - name: Install Playwright browser
         run: pnpm --dir packages/create-uni-app-tailwindcss exec playwright install --with-deps chromium
 
-      - name: Run generated project E2E
-        run: pnpm test:e2e:daily
+      - name: Run generated project lifecycle
+        run: pnpm test:e2e:daily -- --source ${{ matrix.source }}
 
-      - name: Upload generated project E2E evidence
-        if: failure()
+      - name: Upload generated project lifecycle evidence
+        if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: generated-project-e2e-${{ github.run_id }}
-          path: |
-            packages/create-uni-app-tailwindcss/playwright-report
-            packages/create-uni-app-tailwindcss/test-results
+          name: user-journey-${{ matrix.source }}-node-${{ matrix.node }}
+          path: packages/template/.hmr-artifacts/user-journey/${{ matrix.source }}/node-${{ matrix.node }}
+          if-no-files-found: warn
+          retention-days: 7
+
+  daily-contract:
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    name: Daily lifecycle contract
+    needs: daily-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download lifecycle evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: user-journey-*
+          path: daily-artifacts
+
+      - name: Validate lifecycle coverage and contracts
+        run: node scripts/validate-daily-contracts.mjs daily-artifacts
+
+      - name: Upload contract summary
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: user-journey-contract-${{ github.run_id }}
+          path: daily-artifacts/daily-contract-summary.md
           if-no-files-found: warn
           retention-days: 7
 
@@ -315,12 +350,13 @@ jobs:
       - hmr
       - workers
       - daily-e2e
+      - daily-contract
     runs-on: ubuntu-latest
     steps:
       - name: Write job summary
         env:
           RESULTS: >-
-            {"templates":"${{ needs.templates.result }}","repository":"${{ needs.repository.result }}","lint":"${{ needs.lint.result }}","cli":"${{ needs.cli.result }}","fast-e2e":"${{ needs.fast-e2e.result }}","build":"${{ needs.build.result }}","hmr":"${{ needs.hmr.result }}","workers":"${{ needs.workers.result }}","daily-e2e":"${{ needs.daily-e2e.result }}"}
+            {"templates":"${{ needs.templates.result }}","repository":"${{ needs.repository.result }}","lint":"${{ needs.lint.result }}","cli":"${{ needs.cli.result }}","fast-e2e":"${{ needs.fast-e2e.result }}","build":"${{ needs.build.result }}","hmr":"${{ needs.hmr.result }}","workers":"${{ needs.workers.result }}","daily-e2e":"${{ needs.daily-e2e.result }}","daily-contract":"${{ needs.daily-contract.result }}"}
         run: |
           node <<'NODE'
           const fs = require('node:fs')

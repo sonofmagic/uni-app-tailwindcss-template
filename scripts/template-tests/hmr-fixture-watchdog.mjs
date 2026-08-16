@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import process from 'node:process'
 
 const ownerPid = Number(process.argv[2])
 const backupFile = process.argv[3]
 
-if (!Number.isInteger(ownerPid) || ownerPid <= 0 || !backupFile) {
-  process.exit(1)
-}
+if (!Number.isInteger(ownerPid) || ownerPid <= 0 || !backupFile) process.exit(1)
 
 const timer = setInterval(() => {
-  if (isRunning(ownerPid)) {
-    return
-  }
+  if (isRunning(ownerPid)) return
   clearInterval(timer)
   restoreBackup()
 }, 250)
@@ -29,16 +26,26 @@ function isRunning(pid) {
 }
 
 function restoreBackup() {
-  if (!existsSync(backupFile)) {
-    return
-  }
+  if (!existsSync(backupFile)) return
   const backup = JSON.parse(readFileSync(backupFile, 'utf8'))
-  if (typeof backup.original !== 'string' || typeof backup.target !== 'string') {
+  if (!Array.isArray(backup?.files)) {
     process.exitCode = 1
     return
   }
-  const tempFile = `${backup.target}.hmr-watchdog-restore`
-  writeFileSync(tempFile, backup.original, 'utf8')
-  renameSync(tempFile, backup.target)
+  for (const file of backup.files) {
+    if (file.existed) {
+      mkdirSync(path.dirname(file.path), { recursive: true })
+      const tempFile = `${file.path}.hmr-watchdog-restore`
+      writeFileSync(tempFile, file.content, 'utf8')
+      renameSync(tempFile, file.path)
+    }
+    else {
+      rmSync(file.path, { force: true })
+      try {
+        rmdirSync(path.dirname(file.path))
+      }
+      catch {}
+    }
+  }
   unlinkSync(backupFile)
 }

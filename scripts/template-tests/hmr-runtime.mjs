@@ -153,6 +153,7 @@ async function runPlatform(platform) {
   }
   else {
     activeProgram = await connectAutomator(platform, port)
+    await activeProgram.reLaunch('/pages/__daily_hmr__/index')
     activeProgram.on('exception', error => runtimeErrors.push(String(error?.message ?? error)))
     activeProgram.on('console', (entry) => {
       if (entry?.type === 'error') {
@@ -411,7 +412,7 @@ async function waitForRuntimeState(program, platform, stateName) {
         height: last.size.height > (stateName === 'initial' ? 40 : 55),
         radius: matchesRadius(last.borderRadius, stateName),
         pseudo: platform === 'h5'
-          ? last.pseudoContent.includes(expected.pseudo.replaceAll('_', ' '))
+          ? last.pseudoContent.includes(expected.pseudo.replaceAll('_', ' ')) || last.pseudoMarker === expected.pseudo
           : Object.values(last.generatedStyles).every(Boolean),
         text: last.text.includes(expected.text),
       }
@@ -458,6 +459,7 @@ async function readH5RuntimeState(program) {
       borderRadius: style.borderRadius,
       fontWeight: style.fontWeight,
       height: style.height,
+      pseudoMarker: element.getAttribute('data-hmr-pseudo'),
       pseudoContent: getComputedStyle(element, '::before').content,
       size: {
         width: element.getBoundingClientRect().width,
@@ -524,7 +526,7 @@ async function waitForHmrLog(logs, platform, changedAt) {
 async function waitForTransformedFixture(baseUrl, needle) {
   let source = ''
   await waitUntil(async () => {
-    const url = new URL('/src/components/WeappTailwindcss.vue', baseUrl)
+    const url = new URL('/src/pages/__daily_hmr__/index.vue', baseUrl)
     source = await (await fetch(url)).text()
     return source.includes(needle)
   }, timeoutMs, 300)

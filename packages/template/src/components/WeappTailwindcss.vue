@@ -1,5 +1,4 @@
 <script setup>
-// HMR_PROBE_SCRIPT
 function copy(data) {
   uni.setClipboardData({
     data,
@@ -48,6 +47,5 @@ function copy(data) {
         before:content-['现在，让我们开始神奇的_tailwindcss_开发之旅吧！']
       "
     />
-    <!-- HMR_PROBE_TEMPLATE -->
   </view>
 </template>

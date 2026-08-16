@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
-    "repoctl": "5.1.1",
+    "repoctl": "5.4.0",
     "vitest": "4.1.10",
     "wrangler": "^4.123.0"
   }

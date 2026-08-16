@@ -1,6 +1,6 @@
 {
   "name": "create-uni-app-tailwindcss",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create a uni-app project with Vite, Vue 3, Tailwind CSS, and weapp-tailwindcss.",
   "private": false,
   "type": "module",

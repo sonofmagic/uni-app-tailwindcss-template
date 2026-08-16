@@ -78,13 +78,17 @@ jobs:
       - name: Build
         run: pnpm template ${{ matrix.template }} ${{ matrix.script }}
 
-      - name: Sync Pages output
+      - name: Sync Workers asset output
         if: matrix.isDefault && matrix.target == 'h5'
         run: node scripts/sync-h5-output.mjs ${{ matrix.template }}
 
-      - name: Verify Pages output
+      - name: Verify Workers asset output
         if: matrix.isDefault && matrix.target == 'h5'
         run: test -f dist/build/h5/index.html
+
+      - name: Validate Workers deployment
+        if: matrix.isDefault && matrix.target == 'h5'
+        run: pnpm workers:check
 
       - name: Install Playwright browser
         if: matrix.isDefault && matrix.target == 'h5'

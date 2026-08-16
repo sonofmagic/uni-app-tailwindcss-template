@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "uni-app-vite-vue3-tailwind-vscode-template",
+  "compatibility_date": "2026-08-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "uniapp.icebreaker.top",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "directory": "./dist/build/h5",
+    "not_found_handling": "single-page-application"
+  }
+}

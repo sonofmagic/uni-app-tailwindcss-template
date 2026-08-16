@@ -21,6 +21,8 @@
     "dev:mp-weixin": "node scripts/run-template.mjs @default dev:mp-weixin",
     "build": "pnpm create:build && node scripts/run-template.mjs @default build",
     "build:h5": "node scripts/run-template.mjs @default build:h5 && node scripts/sync-h5-output.mjs",
+    "workers:check": "wrangler deploy --dry-run",
+    "deploy:workers": "pnpm build:h5 && wrangler deploy",
     "build:app": "node scripts/run-template.mjs @default build:app",
     "build:mp-alipay": "node scripts/run-template.mjs @default build:mp-alipay",
     "build:mp-toutiao": "node scripts/run-template.mjs @default build:mp-toutiao",
@@ -53,6 +55,7 @@
   "devDependencies": {
     "@playwright/test": "^1.55.0",
     "repoctl": "5.1.1",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "^4.123.0"
   }
 }

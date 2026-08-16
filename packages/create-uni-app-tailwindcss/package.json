@@ -38,16 +38,19 @@
     "provenance": true
   },
   "scripts": {
-    "build": "node scripts/build-package.mjs",
+    "build": "pnpm run typecheck && node scripts/build-package.mjs",
     "prepack": "pnpm run build",
     "start": "pnpm run build && node dist/cli.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "prompts": "^2.4.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
+    "@types/node": "^26.2.0",
+    "@types/prompts": "^2.4.9",
     "tsup": "^8.5.0",
     "typescript": "^6.0.3"
   }

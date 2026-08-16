@@ -22,7 +22,7 @@ pnpm test:e2e
 
 ## 模板 HMR 验收
 
-根脚本会代理默认模板的产物层和真实运行时 HMR 检查：
+仓库级验收脚本位于 `scripts/template-tests/`，由根命令针对默认模板运行，不会打包进生成项目：
 
 ```bash
 pnpm test:hmr:artifact:mp-weixin
@@ -33,7 +33,9 @@ pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuil
 pnpm test:hmr:all
 ```
 
-CI 会为每个已注册的 HMR 目标运行无界面的产物层检查。桌面运行时要求和验收证据说明见 [`packages/template/README.md`](packages/template/README.md#tailwind-css-hmr-四端验收)。
+验收脚本会在 `src/components/WeappTailwindcss.vue` 的稳定标记处临时注入探针，并在正常退出、异常或中断后恢复原文件。`--timeout <毫秒>` 可调整单步等待时间，`--report-dir <目录>` 可修改报告目录，截图、日志和 JSON/Markdown 汇总默认写入忽略的 `packages/template/.hmr-artifacts/`。
+
+H5 验收需要 Google Chrome；微信运行时验收需要已登录且服务端口可用的微信开发者工具；App 验收需要 HBuilderX、Android SDK/`adb` 或 Xcode 命令行工具以及已启动的目标设备。CI 只运行不依赖桌面登录态的产物层检查，不能替代真实 DevTools 或 App 运行时验收。
 
 ## 创建项目
 
@@ -64,7 +66,7 @@ pnpm update:uni-app
 
 1. 在 `packages/` 下添加模板源码，并将其声明为 workspace 包。
 2. 在 `templates.json` 中注册模板 ID、源码目录、构建目标、HMR 目标和 H5 冒烟文本。
-3. 为每个已注册的 HMR 目标实现 `test:hmr:artifact:<target>`。
+3. 为每个已注册的 HMR 目标提供 `dev:<target>`，仓库级 runner 会生成对应的产物层检查。
 4. 运行 `pnpm create:build` 和 `pnpm test:e2e`。
 
 create 包会打包所有已注册的模板。GitHub Actions 也会从注册表生成构建和 HMR 矩阵，因此添加模板时无需修改 workflow。

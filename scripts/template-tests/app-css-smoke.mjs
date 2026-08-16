@@ -1,11 +1,14 @@
 import { readFile } from 'node:fs/promises'
-import postcss from 'postcss'
+import { createRequire } from 'node:module'
+import path from 'node:path'
 
-const appCssUrl = new URL('../dist/build/app/app.css', import.meta.url)
-const manifestUrl = new URL('../dist/build/app/manifest.json', import.meta.url)
+const require = createRequire(path.join(process.cwd(), 'package.json'))
+const postcss = require('postcss')
+const appCssPath = path.resolve('dist/build/app/app.css')
+const manifestPath = path.resolve('dist/build/app/manifest.json')
 
-const css = await readFile(appCssUrl, 'utf8')
-const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'))
+const css = await readFile(appCssPath, 'utf8')
+const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
 const root = postcss.parse(css)
 
 function assert(condition, message) {

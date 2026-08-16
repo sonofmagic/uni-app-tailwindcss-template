@@ -86,46 +86,6 @@ pnpm dev:app
 pnpm build:app
 ```
 
-## Tailwind CSS HMR 四端验收
-
-本地验收脚本会在 `src/components/WeappTailwindcss.vue` 的稳定标记处临时注入首屏探针，并在正常退出、异常、`SIGINT` 或 `SIGTERM` 后恢复原文件。探针同时验证基础布局和字体、模板中的 `rpx` 高度与圆角、脚本 class 字符串、伪元素内容，以及 `wx:` / `not-wx:` 平台变体。
-
-```bash
-pnpm test:hmr:h5
-pnpm test:hmr:mp-weixin
-pnpm test:hmr:app:android -- --device-id <android-device-id> --hbuilderx-cli <hbuilderx-cli>
-pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuilderx-cli>
-pnpm test:hmr:all
-```
-
-脚本先完成全部目标的预检，再串行启动 watcher 和宿主。`--timeout <毫秒>` 可调整单步等待时间，`--report-dir <目录>` 可修改报告目录。未传 `--device-id` 时，对应平台必须只有一个在线 Android 设备或一个已启动 iOS 模拟器；`--all` 不接受单个共享的设备 ID。
-
-运行前需要满足以下条件：
-
-- Google Chrome 已安装，用于 H5 的计算样式和截图断言。
-- 微信开发者工具已登录且服务端口可用；失效时先运行 `pnpm weapp:login`。
-- HBuilderX、Android SDK/`adb` 和 Xcode 命令行工具可用，目标模拟器已启动。
-- App 验收显式传入当前正在运行的 HBuilderX CLI，避免正式版和 Alpha 版实例不匹配。
-
-当前机器使用 HBuilderX Alpha 时的命令示例：
-
-```bash
-pnpm test:hmr:app:android -- --device-id emulator-5554 --hbuilderx-cli /Applications/HBuilderX-Alpha.app/Contents/MacOS/cli
-pnpm test:hmr:app:ios -- --device-id 8FF8E968-BB02-4039-A25C-7C7EBCBDA402 --hbuilderx-cli /Applications/HBuilderX-Alpha.app/Contents/MacOS/cli
-```
-
-项目编译器与标准调试基座应保持同一版本。版本不同不仅会显示原生兼容性警告，即使选择“忽略”，也可能出现 CLI 报告同步成功但 iOS 基座未重载资源的情况，此时运行时验收会正确标记为 `FAIL`。App 验收期间启用的测试桥会在探针 SFC 变化时使 `src/tailwind.css` 失效，以便 HBuilderX 的增量构建同步最新 Tailwind CSS；普通开发和生产构建不启用该桥。
-
-截图、开发日志、运行时断言和 JSON/Markdown 汇总写入忽略的 `.hmr-artifacts/`。只有运行页面在同一个开发进程中从绿色、`96rpx`、`18rpx` 自动更新为红色、`128rpx`、`30rpx`，平台分支与伪元素同步变化且无运行时异常，对应平台才会标记为 `PASS`。
-
-CI 不依赖桌面登录态，仅运行生产构建和微信产物层增量检查：
-
-```bash
-pnpm test:hmr:artifact:mp-weixin
-```
-
-该命令不能替代 `pnpm test:hmr:mp-weixin` 的微信开发者工具真实运行时验收。
-
 ## 常用命令
 
 ```bash
@@ -137,13 +97,6 @@ pnpm dev:app
 pnpm build:app
 pnpm launch:app:android
 pnpm launch:app:ios
-pnpm test:app-css
-pnpm test:hmr:h5
-pnpm test:hmr:artifact:mp-weixin
-pnpm test:hmr:mp-weixin
-pnpm test:hmr:app:android
-pnpm test:hmr:app:ios
-pnpm test:hmr:all
 pnpm open:dev
 pnpm open:build
 pnpm lint
@@ -162,12 +115,10 @@ pnpm lint
 
 - Tailwind CSS 由 `weapp-tailwindcss@5` 在构建运行时生成，无需安装后补丁
 - App WebView 兼容由 `weapp-tailwindcss` 内置的 `legacy-web` 处理链提供；模板不再维护额外的 PostCSS 兼容插件，并保留 Tailwind CSS v4 的运行时 `--spacing` 语义
-- `pnpm test:app-css` 会构建 App 资源，并回归检查间距变量、`space-y` 反转公式、渐变文字 WebKit 前缀和 Android/iOS 平台声明
 - 样式条件编译示例使用 `@custom-variant wx` / `@custom-variant not-wx`
 - 请先把 `src/manifest.json` 中的 AppID 替换成自己的配置
 - 模板内提供 `pnpm update:deps` 和 `pnpm update:uni-app`，用于分别升级通用依赖和 `uni-app` 依赖
 - 推荐在 VS Code 中安装 `Tailwind CSS IntelliSense`、ESLint、Stylelint
-- GitHub Actions 会构建 H5、App 和主要小程序目标，但不会执行 App 签名或模拟器启动
 
 ## 依赖升级
 

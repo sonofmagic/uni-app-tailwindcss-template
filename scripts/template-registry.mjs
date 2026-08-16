@@ -36,7 +36,7 @@ export async function loadTemplateRegistry() {
     const pkg = JSON.parse(await readFile(packagePath, 'utf8'))
     const requiredScripts = [
       ...template.targets.map(target => `build:${target}`),
-      ...template.hmrTargets.map(target => `test:hmr:${target}`),
+      ...template.hmrTargets.map(target => `dev:${target}`),
     ]
     for (const script of requiredScripts) {
       if (!pkg.scripts?.[script]) {

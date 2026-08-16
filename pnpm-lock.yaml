@@ -8,9 +8,18 @@ importers:
 
   .:
     devDependencies:
+      '@dcloudio/uni-automator':
+        specifier: 3.0.0-5020420260813002
+        version: 3.0.0-5020420260813002(jest-environment-node@27.5.1)(jest@27.0.4(supports-color@10.2.2))(postcss@8.5.26)(supports-color@10.2.2)
       '@playwright/test':
         specifier: ^1.55.0
         version: 1.62.1
+      playwright:
+        specifier: ^1.62.1
+        version: 1.62.1
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       repoctl:
         specifier: 5.4.0
         version: 5.4.0(@types/node@26.2.0)(conventional-changelog-conventionalcommits@10.3.0)(domexception@2.0.1)(eslint-plugin-pnpm@1.8.0(eslint@10.8.1(jiti@2.7.0)(supports-color@10.2.2)))(eslint@10.8.1(jiti@2.7.0)(supports-color@10.2.2))(jsdom@16.7.0(supports-color@10.2.2))(postcss@8.5.26)(stylelint@17.14.1(supports-color@10.2.2)(typescript@6.0.3))(supports-color@10.2.2)(tailwindcss@4.3.3)(typanion@3.14.0)(typescript@6.0.3)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(terser@5.31.3)(yaml@2.9.0))(vitest@4.1.10(@types/node@26.2.0)(jsdom@16.7.0(supports-color@10.2.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(terser@5.31.3)(yaml@2.9.0)))
@@ -115,9 +124,6 @@ importers:
       '@dcloudio/types':
         specifier: ^3.4.8
         version: 3.4.31
-      '@dcloudio/uni-automator':
-        specifier: 3.0.0-5020420260813002
-        version: 3.0.0-5020420260813002(jest-environment-node@27.5.1)(jest@27.0.4(supports-color@10.2.2))(postcss@8.5.26)(rollup@4.14.3)(supports-color@10.2.2)(vue@3.4.21(typescript@6.0.3))
       '@dcloudio/uni-cli-shared':
         specifier: 3.0.0-5020420260813002
         version: 3.0.0-5020420260813002(postcss@8.5.26)(rollup@4.14.3)(supports-color@10.2.2)(vue@3.4.21(typescript@6.0.3))
@@ -154,12 +160,6 @@ importers:
       eslint:
         specifier: ^10.8.1
         version: 10.8.1(jiti@2.7.0)(supports-color@10.2.2)
-      playwright:
-        specifier: ^1.62.1
-        version: 1.62.1
-      pngjs:
-        specifier: ^7.0.0
-        version: 7.0.0
       postcss:
         specifier: ^8.5.26
         version: 8.5.26
@@ -12222,7 +12222,7 @@ snapshots:
       - vite
       - vue
 
-  '@dcloudio/uni-automator@3.0.0-5020420260813002(jest-environment-node@27.5.1)(jest@27.0.4(supports-color@10.2.2))(postcss@8.5.26)(rollup@4.14.3)(supports-color@10.2.2)(vue@3.4.21(typescript@6.0.3))':
+  '@dcloudio/uni-automator@3.0.0-5020420260813002(jest-environment-node@27.5.1)(jest@27.0.4(supports-color@10.2.2))(postcss@8.5.26)(supports-color@10.2.2)':
     dependencies:
       '@dcloudio/uni-cli-shared': 3.0.0-5020420260813002(postcss@8.5.26)(rollup@4.14.3)(supports-color@10.2.2)(vue@3.4.21(typescript@6.0.3))
       address: 1.2.2

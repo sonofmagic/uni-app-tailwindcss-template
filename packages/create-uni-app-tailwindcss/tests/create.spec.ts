@@ -24,12 +24,18 @@ for (const template of registry.templates) {
       expect(pkg.name).toBe(`${template.id}-app`)
       expect(pkg.scripts['update:deps']).toBe('pnpm up --latest --interactive "!@dcloudio/*" "!@vue/runtime-core" "!@vue/shared" "!rollup" "!vite" "!vue" "!vue-i18n"')
       expect(pkg.scripts['update:uni-app']).toBe('pnpm dlx @dcloudio/uvm@latest --manager pnpm')
+      expect(pkg.scripts['test:hmr:h5']).toBeUndefined()
+      expect(pkg.scripts['test:app-css']).toBeUndefined()
       expect(pkg.scripts['up:pkg']).toBeUndefined()
       expect(pkg.scripts['up:uniapp']).toBeUndefined()
+      expect(pkg.devDependencies['@dcloudio/uni-automator']).toBeUndefined()
+      expect(pkg.devDependencies.playwright).toBeUndefined()
+      expect(pkg.devDependencies.pngjs).toBeUndefined()
       await expectFile(path.join(projectDir, '.npmrc'))
       await expectFile(path.join(projectDir, 'src', 'pages.json'))
       await expectFile(path.join(projectDir, 'vite.config.ts'))
       await expectMissing(path.join(projectDir, '.hmr-artifacts'))
+      await expectMissing(path.join(projectDir, 'scripts'))
     }
     finally {
       await rm(dir, { recursive: true, force: true })

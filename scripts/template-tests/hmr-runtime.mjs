@@ -6,14 +6,14 @@ import { createRequire } from 'node:module'
 import net from 'node:net'
 import path from 'node:path'
 import process from 'node:process'
-import { PNG } from 'pngjs'
 import { createFixtureController, getFixtureState } from './hmr-fixture.mjs'
 
-const require = createRequire(import.meta.url)
-const { Automator } = require('@dcloudio/uni-automator')
-const { chromium } = require('playwright')
-
 const cwd = process.cwd()
+const repoRequire = createRequire(import.meta.url)
+const templateRequire = createRequire(path.join(cwd, 'package.json'))
+const { Automator } = repoRequire('@dcloudio/uni-automator')
+const { chromium } = repoRequire('playwright')
+const { PNG } = repoRequire('pngjs')
 const args = parseArgs(process.argv.slice(2))
 const timeoutMs = Number(args.timeout ?? 240_000)
 const reportRoot = path.resolve(args['report-dir'] ?? '.hmr-artifacts')
@@ -523,9 +523,9 @@ function spawnUni(childArgs, env) {
 }
 
 async function preflight(selected) {
-  require.resolve('playwright')
-  require.resolve('pngjs')
-  require.resolve('@dcloudio/uni-automator')
+  repoRequire.resolve('playwright')
+  repoRequire.resolve('pngjs')
+  repoRequire.resolve('@dcloudio/uni-automator')
   await fs.access(chromePath())
 
   if (selected.includes('mp-weixin')) {
@@ -555,8 +555,8 @@ function collectBaseEnvironment() {
     node: process.version,
     platform: process.platform,
     dependencies: {
-      playwright: packageVersion('playwright'),
-      pngjs: packageVersion('pngjs'),
+      playwright: packageVersion('playwright', repoRequire),
+      pngjs: packageVersion('pngjs', repoRequire),
       tailwindcss: packageVersion('tailwindcss'),
       uniApp: packageVersion('@dcloudio/uni-app'),
       weappTailwindcss: packageVersion('weapp-tailwindcss'),
@@ -975,9 +975,9 @@ function parseArgs(rawArgs) {
   return parsed
 }
 
-function packageVersion(name) {
+function packageVersion(name, resolver = templateRequire) {
   try {
-    return require(`${name}/package.json`).version
+    return resolver(`${name}/package.json`).version
   }
   catch {
     return 'unknown'

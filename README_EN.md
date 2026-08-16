@@ -22,7 +22,7 @@ pnpm test:e2e
 
 ## Template HMR verification
 
-The root scripts proxy the default template's artifact and runtime HMR checks:
+Repository-owned checks live under `scripts/template-tests/` and run against the default template. They are not bundled into generated projects:
 
 ```bash
 pnpm test:hmr:artifact:mp-weixin
@@ -33,7 +33,7 @@ pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuil
 pnpm test:hmr:all
 ```
 
-CI runs the headless artifact check for every registered HMR target. Desktop runtime requirements and evidence details are documented in [`packages/template/README.md`](packages/template/README.md#tailwind-css-hmr-四端验收).
+The checks temporarily inject an HMR probe into `src/components/WeappTailwindcss.vue` and restore the file after normal completion, failure, or interruption. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require HBuilderX plus the relevant Android or iOS tooling. CI only runs the headless artifact check; it does not replace real runtime verification.
 
 ## Create a new project
 
@@ -64,7 +64,7 @@ pnpm update:uni-app
 
 1. Add its source as a workspace package under `packages/`.
 2. Register its ID, source, build targets, HMR targets, and H5 smoke text in `templates.json`.
-3. Implement `test:hmr:artifact:<target>` for each registered HMR target.
+3. Provide `dev:<target>` for each registered HMR target; the repository runner supplies the artifact check.
 4. Run `pnpm create:build` and `pnpm test:e2e`.
 
 The create package bundles every registered template. GitHub Actions also derives its build and HMR matrices from the registry, so new templates do not require workflow edits.

@@ -1,1 +1,6 @@
-{}
+create-uni-app-tailwindcss@0.1.1:
+  dir: packages/create-uni-app-tailwindcss
+  intents:
+    - chilly-lilies-smell
+    - daily-user-journey
+    - fresh-tools-update

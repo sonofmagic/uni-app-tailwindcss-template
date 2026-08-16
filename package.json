@@ -61,5 +61,10 @@
     "repoctl": "5.4.0",
     "vitest": "4.1.10",
     "wrangler": "^4.123.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@intlify/core-base": "11.1.10"
+    }
   }
 }

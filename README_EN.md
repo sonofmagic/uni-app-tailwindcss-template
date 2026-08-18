@@ -2,74 +2,96 @@
 
 [简体中文](./README.md) | English
 
-This repository holds the publishable `pnpm create uni-app-tailwindcss` initializer and its registered templates. Source and releases are hosted at [sonofmagic/uni-app-tailwindcss-template](https://github.com/sonofmagic/uni-app-tailwindcss-template).
+A multi-platform project template based on `uni-app + Vite + Vue 3 + Tailwind CSS`, with the `pnpm create uni-app-tailwindcss` project initializer.
 
-## Packages
+## Use Cases
 
-- `packages/template`: the default uni-app template source used for local development and generation
-- `packages/create-uni-app-tailwindcss`: the CLI that backs `pnpm create uni-app-tailwindcss`
-- `templates.json`: the template registry used by the CLI, root scripts, and CI matrices
+- Build WeChat Mini Programs, H5 sites, and Apps with uni-app and Vite
+- Organize Vue 3 projects with Pinia and automatic imports
+- Write cross-platform styles with Tailwind CSS v4 and `weapp-tailwindcss`
+- Start from runnable page, component, icon, and interaction examples
 
-## Local development
+The main branch uses Tailwind CSS v4. Switch to the `tailwindcss@3` branch when you need Tailwind CSS v3.
 
-```bash
-pnpm install
-pnpm dev:h5
-pnpm dev:mp-weixin
-pnpm test:smoke
-pnpm test:e2e
-pnpm test:e2e:daily
-```
+## What Is Included
 
-`test:e2e` is the fast scaffolding gate used on pull requests. `test:e2e:daily` checks both the locally packed candidate and npm `latest` by default; pass `--source candidate|latest|all` to select a source. Each source is created with its real create command in a system temporary directory, then goes through independent install and frozen reinstall, normal edits, lint, H5 development/HMR, incremental WeChat compilation, five production targets, static H5 serving, and a side-effect-free Workers dry-run.
+- `uni-app`, Vite, Vue 3, Pinia, and Vue I18n
+- Tailwind CSS v4, `weapp-tailwindcss`, and `@iconify/tailwind4`
+- `unplugin-auto-import` for Vue, uni-app, and Pinia APIs
+- A runnable home page with Hero, capability, interaction, gradient feature, icon gallery, and macro showcase components
+- `src/pages/` for pages, `src/components/` for shared UI, `src/stores/` for Pinia stores, and `src/static/` for assets
+- `wx:` and `not-wx:` conditional styling examples, plus the Tailwind processing chain for App WebViews
 
-## Template HMR verification
+## Supported Platforms
 
-Repository-owned checks live under `scripts/template-tests/` and run against the default template. They are not bundled into generated projects:
+| Platform | Development | Production build |
+| --- | --- | --- |
+| WeChat Mini Program | `pnpm dev:mp-weixin` | `pnpm build:mp-weixin` |
+| H5 | `pnpm dev:h5` | `pnpm build:h5` |
+| Android | `pnpm launch:app:android` | `pnpm build:app` |
+| iOS Simulator | `pnpm launch:app:ios` | `pnpm build:app` |
+| Alipay Mini Program | `pnpm dev:mp-alipay` | `pnpm build:mp-alipay` |
+| Toutiao Mini Program | `pnpm dev:mp-toutiao` | `pnpm build:mp-toutiao` |
 
-```bash
-pnpm test:hmr:artifact:mp-weixin
-pnpm test:hmr:h5
-pnpm test:hmr:mp-weixin
-pnpm test:hmr:app:android -- --device-id <android-device-id> --hbuilderx-cli <hbuilderx-cli>
-pnpm test:hmr:app:ios -- --device-id <ios-simulator-uuid> --hbuilderx-cli <hbuilderx-cli>
-pnpm test:app-css:artifact
-pnpm test:hmr:all
-```
+`build:app` creates shared `app-plus` WebView resources for Android and iOS. It does not produce signed APK or IPA files.
 
-The checks create a test-owned temporary route and touch the Tailwind entry directly, then restore every source file after normal completion, failure, or interruption. The public template contains no HMR probes, bridges, or QA scripts. Evidence is written to the ignored `packages/template/.hmr-artifacts/` directory. H5 checks require Google Chrome, WeChat runtime checks require logged-in DevTools with its service port enabled, and App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler plus the relevant Android or iOS tooling. `test:app-css:artifact` checks an existing App build without compiling it again. CI only runs the headless artifact check; it does not replace real runtime verification.
+## Prerequisites
 
-## Daily comprehensive testing
+- Node.js `22+`
+- `pnpm`
+- WeChat DevTools for WeChat Mini Programs
+- HBuilderX `5.0+` for Android and iOS App debugging
+- Android SDK, an emulator, or a USB-debugging Android device
+- macOS, Xcode, and an iOS Simulator, or an iOS device with signing configured
 
-The `Quality` GitHub Actions workflow starts every day at 03:00 Asia/Shanghai. Separate jobs cover repository health, lint, the create CLI, five production targets, a Workers dry-run, fast E2E, and artifact-level WeChat HMR. The daily user journey runs as a `candidate/latest × Node 22/24` matrix. A contract job requires every declared scenario to execute and compares normalized files, scripts, and dependency fingerprints between the candidate and npm latest. Latest drift or a broken public package is a strict `FAIL`; evidence is retained for seven days.
+Before releasing an App, configure your DCloud AppID, Android package and signing settings, or iOS Bundle ID and certificates in `src/manifest.json`. The template does not contain release credentials.
 
-Lifecycle coverage of 100% means `required scenarios executed / required scenarios = 100%`, not line coverage or an exhaustive set of all possible combinations. A `BLOCKED` scenario counts as executed but does not make the suite pass. Any silent `SKIP` or missing scenario fails the contract.
-
-The current npm `create-uni-app-tailwindcss@latest` (`0.1.0`) still emits the old QA scripts, so the first latest canary is expected to be a strict `FAIL`. The tests never publish or upload a real application.
-
-Run the complementary local runtime suite at 03:10 with:
-
-```bash
-pnpm test:daily:runtime
-```
-
-The runner uses `caffeinate`, creates and independently installs candidate and latest projects, then runs H5, WeChat DevTools, iOS Simulator, and the single online Android device serially for each source. It finally waits up to 45 minutes for that day's scheduled GitHub run. It only closes Simulator and HBuilderX when it started them. Missing tools, login, or devices produce `BLOCKED`; create, build, or assertion failures produce `FAIL`. Reports include source, platform, repair commands, and the GitHub run URL under the ignored `packages/template/.hmr-artifacts/daily/summary.{json,md}`, with exit codes `0` for pass, `1` for failure, and `2` for blocked. Set `DAILY_IOS_DEVICE_ID` to pin the simulator, or pass `--skip-github` when validating only local runtimes.
-
-## Create a new project
+## Create a Project
 
 ```bash
 pnpm create uni-app-tailwindcss my-app
+cd my-app
+pnpm install
+pnpm dev:h5
 ```
 
-Use `--template <id>` to select a registered template in CI or other non-interactive environments:
+In CI or another non-interactive environment, select the template and package manager explicitly:
 
 ```bash
-pnpm create uni-app-tailwindcss my-app --template default
+pnpm create uni-app-tailwindcss my-app --template default --pm pnpm
 ```
 
-The command copies the selected bundled template into `my-app`, rewrites the package name, and leaves you with a standalone pnpm project.
+The CLI copies the bundled template, rewrites the project name in `package.json`, and leaves a standalone pnpm project. After creation, replace `dev:h5` with any development command for a supported platform.
 
-## Update dependencies
+## Run on Android and iOS
+
+Keep HBuilderX, the standard debug base, and the project's uni-app compiler on compatible versions. Start an Android emulator, connect an Android device, or boot an iOS Simulator before running:
+
+```bash
+pnpm launch:app:android
+pnpm launch:app:ios
+```
+
+Pass a device ID when needed:
+
+```bash
+pnpm launch:app:android --deviceId <android-device-id>
+pnpm launch:app:ios --deviceId <ios-simulator-uuid>
+```
+
+`launch:app:ios` targets the iOS Simulator by default. A real device requires Apple signing configured in HBuilderX. You can also run `pnpm dev:app`, then import `dist/dev/app` into HBuilderX.
+
+## Cross-Platform Styling
+
+- Prefer static Tailwind classes that can be scanned; use enumerated values instead of freely concatenated runtime classes.
+- Keep Tailwind spacing and breakpoints consistent at the same logical width; use `rpx` arbitrary values for dimensions that should scale with the screen.
+- Leave safe-area space at the bottom of pages so iOS Home Indicator and Android gesture navigation do not cover content.
+- Prefer images in `src/static` with the uni-app `image` component to reduce platform-specific loading shifts.
+- Use `wx:` for Mini Program-only styles and `not-wx:` for other hosts; Android and iOS both use the `not-wx` branch.
+
+`weapp-tailwindcss@5` generates Tailwind CSS and collects classes at build time. No extra Tailwind patch or install hook is required. App WebView compatibility is provided by its built-in `legacy-web` processing chain.
+
+## Update Dependencies
 
 Use separate commands for regular dependencies and the uni-app compiler toolchain:
 
@@ -78,25 +100,14 @@ pnpm update:deps
 pnpm update:uni-app
 ```
 
-`update:deps` interactively updates regular dependencies in the default template while leaving the DCloud-managed uni-app compatibility set unchanged. `update:uni-app` uses the official UVM tool to update that compatibility set together.
+Do not update compatibility dependencies such as `vue`, `vite`, `rollup`, or `@dcloudio/*` individually with the general update command. `update:uni-app` uses the official UVM tool to keep the compiler set aligned.
 
-## Add a template
+## Related Documentation
 
-1. Add its source as a workspace package under `packages/`.
-2. Register its ID, source, build targets, HMR targets, and H5 smoke text in `templates.json`.
-3. Provide `dev:<target>` for each registered HMR target; the repository runner supplies the artifact check.
-4. Run `pnpm create:build` and `pnpm test:e2e`.
+- [Complete guide for generated projects](./packages/template/README.md)
+- [Repository development, testing, and release guide](./CONTRIBUTING_EN.md)
+- [weapp-tailwindcss](https://tw.icebreaker.top/)
+- [uni-app](https://uniapp.dcloud.net.cn/)
+- [HBuilderX App CLI](https://hx.dcloud.net.cn/cli/launch-app)
 
-The create package bundles every registered template. GitHub Actions also derives its build and HMR matrices from the registry, so new templates do not require workflow edits.
-
-## Release
-
-Package versions and releases use pnpm native versioning with repoctl:
-
-```bash
-pnpm release
-pnpm release:status
-pnpm repo:doctor
-```
-
-Commit the generated change intent with the user-visible change. The release workflow creates a version PR from pending intents and publishes the merged version to npm with provenance.
+Source and releases are hosted at [sonofmagic/uni-app-tailwindcss-template](https://github.com/sonofmagic/uni-app-tailwindcss-template).

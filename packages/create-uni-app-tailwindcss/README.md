@@ -14,10 +14,4 @@ pnpm create uni-app-tailwindcss my-app --template default
 
 When multiple templates are bundled and `--template` is omitted, the CLI prompts for one in interactive terminals and uses the registry default otherwise.
 
-For local development in this monorepo:
-
-```bash
-pnpm install
-pnpm create
-pnpm test:e2e
-```
+For repository development, testing, and releases, see the root [CONTRIBUTING.md](https://github.com/sonofmagic/uni-app-tailwindcss-template/blob/main/CONTRIBUTING.md).

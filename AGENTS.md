@@ -42,7 +42,7 @@ Playwright tests live in `packages/create-uni-app-tailwindcss/tests/` and cover 
 
 Use `pnpm test:hmr:artifact:mp-weixin` for the deterministic headless CI path. It applies the shared probe fixture atomically, verifies transformed template/script/style artifacts before and after an incremental compile, and restores the source even after interruption.
 
-Runtime verification remains platform-specific: `pnpm test:hmr:h5` uses Playwright, `pnpm test:hmr:mp-weixin` requires logged-in WeChat DevTools, and the App scripts require the matching HBuilderX CLI plus a running device or simulator. Reports, screenshots, and logs live under ignored `packages/template/.hmr-artifacts/`; do not commit them or bundle them into generated projects.
+Runtime verification remains platform-specific: `pnpm test:hmr:h5` uses local Chrome or the Playwright Chromium fallback, `pnpm test:hmr:mp-weixin` requires logged-in WeChat DevTools, and the App scripts require the matching HBuilderX CLI plus a running device or simulator. Quality CI runs hosted H5 runtime HMR and WeChat artifact HMR; an optional `self-hosted, macOS, uni-app-runtime` runner can run the external runtime matrix when the repository variable `UNI_APP_RUNTIME_ENABLED=true`. Reports, screenshots, and logs live under ignored `packages/template/.hmr-artifacts/`; do not commit them or bundle them into generated projects.
 
 The daily lifecycle contract defines 100% as every required scenario being executed. `BLOCKED` counts as executed but cannot pass the suite; `MISSING` and `SKIP` fail it. Scheduled/manual CI runs candidate/latest on Node 22 and 24, compares generated-project fingerprints, and treats npm latest drift as a failure.
 

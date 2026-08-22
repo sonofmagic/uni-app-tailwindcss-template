@@ -679,7 +679,13 @@ function hbuilderxPaths() {
 }
 
 function chromePath() {
-  return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  if (process.env.HMR_CHROME_PATH) {
+    return process.env.HMR_CHROME_PATH
+  }
+  if (process.platform === 'darwin') {
+    return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  }
+  return chromium.executablePath()
 }
 
 async function cleanupPlatform() {
@@ -958,7 +964,11 @@ async function waitForOutput(child, matcher, timeout) {
   child.stderr.on('data', (chunk) => {
     output += chunk.toString()
   })
-  await waitUntil(() => matcher.test(output), timeout, 200)
+  await waitUntil(() => matcher.test(stripAnsi(output)), timeout, 200)
+}
+
+function stripAnsi(value) {
+  return value.replaceAll(/\u001B\][\d;]*[A-Za-z]|\u001B\[[0-?]*[ -/]*[@-~]/g, '')
 }
 
 async function waitUntil(predicate, timeout, interval) {

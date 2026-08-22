@@ -93,14 +93,14 @@ pnpm launch:app:ios --deviceId <ios-simulator-uuid>
 
 ## 更新依赖
 
-普通依赖和 uni-app 编译工具链使用不同的更新命令：
+普通依赖和 uni-app 编译工具链使用不同的更新命令。仓库根目录的 `update:deps` 会遍历整个 monorepo（包括根包和所有 workspace 包）；模板目录中的同名命令只更新该模板：
 
 ```bash
 pnpm update:deps
 pnpm update:uni-app
 ```
 
-不要用通用更新命令单独升级 `vue`、`vite`、`rollup` 或 `@dcloudio/*` 等兼容性依赖；`update:uni-app` 会通过官方 UVM 让编译器相关版本保持一致。
+不要用通用更新命令单独升级 `vue`、`vite`、`rollup` 或 `@dcloudio/*` 等兼容性依赖；它们会由 `update:uni-app` 通过官方 UVM 在模板中保持一致。
 
 ## 相关文档
 

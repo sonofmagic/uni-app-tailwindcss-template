@@ -29,7 +29,7 @@
     "build:mp-weixin": "node scripts/run-template.mjs @default build:mp-weixin",
     "lint": "node scripts/run-template.mjs @default lint",
     "lint:fix": "node scripts/run-template.mjs @default lint:fix",
-    "update:deps": "node scripts/run-template.mjs @default update:deps",
+    "update:deps": "pnpm -r --include-workspace-root up --latest --interactive \"!@dcloudio/*\" \"!@vue/runtime-core\" \"!@vue/shared\" \"!rollup\" \"!vite\" \"!vue\" \"!vue-i18n\"",
     "update:uni-app": "node scripts/run-template.mjs @default update:uni-app",
     "template": "node scripts/run-template.mjs",
     "templates:matrix": "node scripts/ci-matrix.mjs",
@@ -63,8 +63,8 @@
     "jsonc-parser": "^3.3.1",
     "playwright": "^1.62.1",
     "pngjs": "^7.0.0",
-    "repoctl": "5.4.0",
-    "vitest": "4.1.10",
-    "wrangler": "^4.123.0"
+    "repoctl": "5.4.1",
+    "vitest": "4.1.11",
+    "wrangler": "^4.125.0"
   }
 }

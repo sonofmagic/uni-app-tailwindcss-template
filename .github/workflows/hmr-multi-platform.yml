@@ -235,6 +235,99 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  hmr-h5:
+    name: H5 runtime HMR
+    needs: templates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run H5 runtime HMR
+        run: pnpm test:hmr:h5 -- --timeout 240000
+
+      - name: Upload H5 HMR evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hmr-h5-${{ github.run_id }}
+          path: packages/template/.hmr-artifacts
+          if-no-files-found: warn
+          retention-days: 7
+
+  runtime-hmr:
+    if: vars.UNI_APP_RUNTIME_ENABLED == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    name: Runtime HMR / ${{ matrix.target }}
+    needs: templates
+    runs-on: [self-hosted, macOS, uni-app-runtime]
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mp-weixin
+            script: test:hmr:mp-weixin
+          - target: app-ios
+            script: test:hmr:app:ios
+          - target: app-android
+            script: test:hmr:app:android
+    env:
+      HBUILDERX_CLI_PATH: ${{ vars.HBUILDERX_CLI_PATH }}
+      DAILY_IOS_DEVICE_ID: ${{ vars.DAILY_IOS_DEVICE_ID }}
+      DAILY_ANDROID_DEVICE_ID: ${{ vars.DAILY_ANDROID_DEVICE_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run runtime HMR
+        shell: bash
+        run: |
+          extra_args=()
+          if [[ "${{ matrix.target }}" == "app-ios" && -n "$DAILY_IOS_DEVICE_ID" ]]; then
+            extra_args+=(--device-id "$DAILY_IOS_DEVICE_ID")
+          fi
+          if [[ "${{ matrix.target }}" == "app-android" && -n "$DAILY_ANDROID_DEVICE_ID" ]]; then
+            extra_args+=(--device-id "$DAILY_ANDROID_DEVICE_ID")
+          fi
+          pnpm template:test @default "${{ matrix.script }}" -- --timeout 240000 "${extra_args[@]}"
+
+      - name: Upload runtime HMR evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hmr-runtime-${{ matrix.target }}-${{ github.run_id }}
+          path: packages/template/.hmr-artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
   workers:
     name: H5 Workers dry-run
     runs-on: ubuntu-latest
@@ -348,6 +441,8 @@ jobs:
       - fast-e2e
       - build
       - hmr
+      - hmr-h5
+      - runtime-hmr
       - workers
       - daily-e2e
       - daily-contract
@@ -356,7 +451,7 @@ jobs:
       - name: Write job summary
         env:
           RESULTS: >-
-            {"templates":"${{ needs.templates.result }}","repository":"${{ needs.repository.result }}","lint":"${{ needs.lint.result }}","cli":"${{ needs.cli.result }}","fast-e2e":"${{ needs.fast-e2e.result }}","build":"${{ needs.build.result }}","hmr":"${{ needs.hmr.result }}","workers":"${{ needs.workers.result }}","daily-e2e":"${{ needs.daily-e2e.result }}","daily-contract":"${{ needs.daily-contract.result }}"}
+            {"templates":"${{ needs.templates.result }}","repository":"${{ needs.repository.result }}","lint":"${{ needs.lint.result }}","cli":"${{ needs.cli.result }}","fast-e2e":"${{ needs.fast-e2e.result }}","build":"${{ needs.build.result }}","hmr":"${{ needs.hmr.result }}","hmr-h5":"${{ needs.hmr-h5.result }}","runtime-hmr":"${{ needs.runtime-hmr.result }}","workers":"${{ needs.workers.result }}","daily-e2e":"${{ needs.daily-e2e.result }}","daily-contract":"${{ needs.daily-contract.result }}"}
         run: |
           node <<'NODE'
           const fs = require('node:fs')

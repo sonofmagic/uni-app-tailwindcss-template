@@ -35,6 +35,7 @@ for (const template of registry.templates) {
       await expectFile(path.join(projectDir, 'pnpm-workspace.yaml'))
       await expectFile(path.join(projectDir, 'src', 'pages.json'))
       await expectFile(path.join(projectDir, 'vite.config.ts'))
+      await expectMissing(path.join(projectDir, 'pnpm-lock.yaml'))
       await expectMissing(path.join(projectDir, '.hmr-artifacts'))
       await expectMissing(path.join(projectDir, 'scripts'))
     }

@@ -93,14 +93,14 @@ pnpm launch:app:ios --deviceId <ios-simulator-uuid>
 
 ## Update Dependencies
 
-Use separate commands for regular dependencies and the uni-app compiler toolchain:
+Use separate commands for regular dependencies and the uni-app compiler toolchain. From the repository root, `update:deps` traverses the entire monorepo (the root package and every workspace package); the same command inside a template only updates that template:
 
 ```bash
 pnpm update:deps
 pnpm update:uni-app
 ```
 
-Do not update compatibility dependencies such as `vue`, `vite`, `rollup`, or `@dcloudio/*` individually with the general update command. `update:uni-app` uses the official UVM tool to keep the compiler set aligned.
+Do not update compatibility dependencies such as `vue`, `vite`, `rollup`, or `@dcloudio/*` individually with the general update command. `update:uni-app` uses the official UVM tool to keep the template compiler set aligned.
 
 ## Related Documentation
 

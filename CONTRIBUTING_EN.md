@@ -59,11 +59,11 @@ pnpm test:hmr:all
 
 The checks create a temporary test route and touch the Tailwind entry, then restore source files after normal completion, failure, or interruption. Screenshots, logs, and JSON/Markdown reports are written to the ignored `packages/template/.hmr-artifacts/` directory.
 
-H5 checks require Google Chrome; WeChat runtime checks require logged-in DevTools with its service port enabled; App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler, Android SDK/`adb` or Xcode command-line tools, and a target device. `test:app-css:artifact` checks an existing App build without compiling it again. CI only runs the headless artifact check and does not replace desktop runtime verification.
+H5 checks use Google Chrome locally and Playwright Chromium on Linux CI; WeChat runtime checks require logged-in DevTools with its service port enabled; App checks require an HBuilderX version matching the `@dcloudio/vite-plugin-uni` compiler, Android SDK/`adb` or Xcode command-line tools, and a target device. `test:app-css:artifact` checks an existing App build without compiling it again. The Quality workflow runs hosted H5 runtime HMR and WeChat artifact HMR. Setting the repository variable `UNI_APP_RUNTIME_ENABLED=true` enables WeChat, iOS Simulator, and Android runtime HMR on a runner labeled `self-hosted, macOS, uni-app-runtime`; missing desktop tools or devices should be reported as `BLOCKED` by the local daily runner.
 
 ## Daily Comprehensive Testing
 
-The `Quality` GitHub Actions workflow runs every day at 03:00 Asia/Shanghai. It covers repository checks, lint, the CLI build, five production targets, a Workers dry-run, fast E2E, and artifact-level WeChat HMR. The daily user lifecycle runs as a `candidate/latest × Node 22/24` matrix; its contract job requires every declared scenario to execute and compares normalized files, scripts, and dependency fingerprints between candidate and npm latest.
+The `Quality` GitHub Actions workflow runs every day at 03:00 Asia/Shanghai. It covers repository checks, lint, the CLI build, five production targets, a Workers dry-run, fast E2E, H5 runtime HMR, and artifact-level WeChat HMR. The daily user lifecycle runs as a `candidate/latest × Node 22/24` matrix; its contract job requires every declared scenario to execute and compares normalized files, scripts, and dependency fingerprints between candidate and npm latest. When the optional self-hosted runtime runner is enabled, scheduled and manual runs also execute WeChat DevTools, iOS Simulator, and Android device HMR and upload `.hmr-artifacts` evidence.
 
 ```bash
 pnpm test:e2e:daily

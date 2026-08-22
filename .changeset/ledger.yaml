@@ -4,3 +4,7 @@ create-uni-app-tailwindcss@0.1.1:
     - chilly-lilies-smell
     - daily-user-journey
     - fresh-tools-update
+create-uni-app-tailwindcss@0.1.2:
+  dir: packages/create-uni-app-tailwindcss
+  intents:
+    - fair-clocks-dig

@@ -1,5 +1,17 @@
 # create-uni-app-tailwindcss
 
+## 0.1.3
+
+### Patch Changes
+
+- 生成的 uni-app 项目现在包含 VS Code 的 ESLint、Stylelint、Tailwind CSS 配置和扩展推荐。
+
+- 升级模板、脚手架和仓库工具链依赖，统一更新锁文件并提升生成项目的构建与测试工具版本。
+
+- 完善每日用户全生命周期测试，覆盖 H5 浏览器 E2E 与热更新，以及 App、微信、支付宝和抖音端的增量编译和生产构建。
+
+- deps upgrade
+
 ## 0.1.2
 
 ### Patch Changes

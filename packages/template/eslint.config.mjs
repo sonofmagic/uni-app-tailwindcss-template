@@ -6,7 +6,8 @@ export default icebreaker(
     betterTailwindcss: {
       entryPoint: './src/tailwind.css',
     },
-    weapp: true,
+    // This template uses uni-app, not the Wevu runtime targeted by miniProgram.
+    miniProgram: false,
   },
   {
     ignores: [
@@ -25,9 +26,16 @@ export default icebreaker(
     },
   },
   {
-    files: ['src/main.ts'],
-    rules: {
-      'wevu/no-unsupported-api': 'off',
+    files: ['src/**/*.{js,ts,vue}'],
+    languageOptions: {
+      globals: {
+        uni: 'readonly',
+        wx: 'readonly',
+        my: 'readonly',
+        tt: 'readonly',
+        getApp: 'readonly',
+        getCurrentPages: 'readonly',
+      },
     },
   },
 )

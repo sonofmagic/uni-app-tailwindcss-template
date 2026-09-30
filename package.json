@@ -50,7 +50,7 @@
     "test": "pnpm test:e2e",
     "test:e2e": "pnpm --dir packages/create-uni-app-tailwindcss test:e2e",
     "test:e2e:daily": "pnpm --dir packages/create-uni-app-tailwindcss test:e2e:daily",
-    "test:e2e:daily:unit": "vitest run scripts/tests/daily-contract.spec.ts scripts/tests/ci-matrix.spec.ts scripts/tests/preflight.spec.ts",
+    "test:e2e:daily:unit": "vitest run scripts/tests",
     "test:preflight": "node scripts/preflight.mjs",
     "test:daily:runtime": "node scripts/daily-runtime.mjs",
     "test:smoke": "pnpm lint && pnpm test:hmr:artifact:mp-weixin && pnpm test:app-css",
@@ -62,7 +62,6 @@
     "repo:doctor": "repo doctor"
   },
   "devDependencies": {
-    "@dcloudio/uni-automator": "3.0.0-5020620260917001",
     "@playwright/test": "^1.63.0",
     "jsonc-parser": "^3.3.1",
     "playwright": "^1.63.0",

@@ -13,6 +13,11 @@ allowBuilds:
 onlyBuiltDependencies:
   - '@weapp-tailwindcss/merge'
 minimumReleaseAge: 0
+# repoctl 5.5.10 uses the pnpm 10 workspace parser. Its logger and worker
+# must satisfy that parser's actual peer ranges, rather than the pnpm 11 APIs.
+overrides:
+  '@icebreakers/monorepo@5.5.10>@pnpm/logger': 1001.0.1
+  '@icebreakers/monorepo@5.5.10>@pnpm/worker': 1000.6.7
 versioning:
   fixed:
     - - create-uni-app-tailwindcss

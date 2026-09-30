@@ -78,7 +78,6 @@
   "devDependencies": {
     "@dcloudio/hbuilderx-cli": "^1.2.0",
     "@dcloudio/types": "3.4.31",
-    "@dcloudio/uni-automator": "3.0.0-5020620260917001",
     "@dcloudio/uni-cli-shared": "3.0.0-5020620260917001",
     "@dcloudio/uni-stacktracey": "3.0.0-5020620260917001",
     "@dcloudio/vite-plugin-uni": "3.0.0-5020620260917001",

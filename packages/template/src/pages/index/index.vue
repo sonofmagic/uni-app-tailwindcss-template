@@ -5,10 +5,6 @@ import GradientFeature from '@/components/sections/GradientFeature.vue'
 import HeroShowcase from '@/components/sections/HeroShowcase.vue'
 import IconGallery from '@/components/sections/IconGallery.vue'
 import MacroShowcase from '@/components/sections/MacroShowcase.vue'
-
-onLoad(() => {
-  console.log('欢迎使用 wx / not-wx 变量示例模板')
-})
 </script>
 
 <template>

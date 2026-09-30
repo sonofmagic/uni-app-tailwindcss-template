@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { runCommand } from '../runtime-process.mjs'
 import { ExternalBlockError, checkGitHubRun, runRuntimeLane, runtimeStatus, statusExitCode } from '../runtime-contract.mjs'
-import { checkHBuilderX, matchesHBuilderX, prepareHBuilderX, runPreflight } from '../preflight-core.mjs'
+import { checkHBuilderX, matchesHBuilderX, prepareHBuilderX, runPreflight, checkNodeAndPnpm } from '../preflight-core.mjs'
 import { connectWechatRuntime } from '../runtime-wechat.mjs'
 
 describe('external commands', () => {
@@ -131,6 +131,18 @@ describe('HBuilderX identity', () => {
     })
     expect(result.status).toBe('BLOCKED')
     expect(result.evidence.selected.version).toBe('5.26.2026091802')
+  })
+})
+
+describe('standalone package managers', () => {
+  it('checks pnpm inside the generated project, not the repository', async () => {
+    const checks = await checkNodeAndPnpm({
+      packageManager: 'pnpm@12.4.1', cwd: '/generated/latest',
+      executor: { async run(_command: string, _args: string[], options: { cwd?: string }) {
+        return { code: 0, output: options.cwd === '/generated/latest' ? '12.4.1' : '12.8.1' }
+      } },
+    })
+    expect(checks.find(check => check.id === 'runtime.pnpm.version').status).toBe('PASS')
   })
 })
 

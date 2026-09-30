@@ -170,7 +170,7 @@ export function createDefaultExecutor({ cwd = registryRoot, env = process.env } 
   }
 }
 
-export async function checkNodeAndPnpm({ executor = createDefaultExecutor(), nodeVersion = process.version, nodeRequirement = '>=22', packageManager, target = 'repository' } = {}) {
+export async function checkNodeAndPnpm({ executor = createDefaultExecutor(), nodeVersion = process.version, nodeRequirement = '>=22', packageManager, cwd, target = 'repository' } = {}) {
   const checks = []
   const nodeMatches = checkVersion(nodeVersion, nodeRequirement)
   checks.push(makeCheck({
@@ -179,7 +179,7 @@ export async function checkNodeAndPnpm({ executor = createDefaultExecutor(), nod
     message: nodeMatches ? `Node.js ${nodeVersion}` : `Node.js ${nodeVersion} does not satisfy ${nodeRequirement}`,
     repairCommand: nodeMatches ? undefined : `Install Node.js satisfying ${nodeRequirement}`, evidence: { actual: nodeVersion, required: nodeRequirement },
   }))
-  const pnpm = await executor.run('pnpm', ['--version'])
+  const pnpm = await executor.run('pnpm', ['--version'], { cwd })
   const actualPnpm = firstVersion(commandOutput(pnpm))
   const expectedPnpm = packageManager?.match(/^pnpm@(.+)$/)?.[1]
   const pnpmMatches = pnpm.code === 0 && (!expectedPnpm || compareVersions(actualPnpm, expectedPnpm))
@@ -440,7 +440,7 @@ export async function prepareHBuilderX({ source, executor = createDefaultExecuto
 
 export async function checkBaseline({ repo = registryRoot, source, packageManager, executor = createDefaultExecutor({ cwd: repo }), target = 'repository' } = {}) {
   const sourcePackage = await readPackageJson(source, executor)
-  const checks = await checkNodeAndPnpm({ executor, packageManager, nodeRequirement: sourcePackage?.engines?.node, target })
+  const checks = await checkNodeAndPnpm({ executor, packageManager, cwd: source, nodeRequirement: sourcePackage?.engines?.node, target })
   const rootFiles = [path.join(repo, 'templates.json'), path.join(repo, 'package.json'), path.join(source, 'package.json'), path.join(source, 'vite.config.ts'), path.join(source, 'src/tailwind.css'), path.join(source, 'src/pages.json'), path.join(source, 'src/manifest.json')]
   checks.push(await checkRequiredFiles(rootFiles, { executor, target }))
   checks.push(await checkManifest(path.join(source, 'src/manifest.json'), { executor, target }))

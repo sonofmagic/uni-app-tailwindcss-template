@@ -13,6 +13,7 @@ import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { satisfies } from 'semver'
 
 import { loadTemplateRegistry, repoRoot as registryRoot, resolveTemplateSource } from './template-registry.mjs'
 
@@ -144,17 +145,7 @@ export function makeCheck({ id, target, phase = 'baseline', status = 'PASS', mes
 }
 
 export function checkVersion(actual, requirement = '>=22') {
-  const normalized = String(actual ?? '').match(/(\d+)\.(\d+)\.(\d+)/)
-  const required = String(requirement).match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/)
-  if (!normalized || !required) return false
-  const value = normalized.slice(1).map(Number)
-  const wanted = [required[1], required[2] ?? 0, required[3] ?? 0].map(Number)
-  const compare = value[0] - wanted[0] || value[1] - wanted[1] || value[2] - wanted[2]
-  if (String(requirement).startsWith('>=')) return compare >= 0
-  if (String(requirement).startsWith('>')) return compare > 0
-  if (String(requirement).startsWith('<=')) return compare <= 0
-  if (String(requirement).startsWith('<')) return compare < 0
-  return compare === 0
+  return satisfies(String(actual ?? ''), requirement)
 }
 
 export function compareVersions(actual, expected) {
@@ -179,13 +170,14 @@ export function createDefaultExecutor({ cwd = registryRoot, env = process.env } 
   }
 }
 
-export async function checkNodeAndPnpm({ executor = createDefaultExecutor(), nodeVersion = process.version, packageManager, target = 'repository' } = {}) {
+export async function checkNodeAndPnpm({ executor = createDefaultExecutor(), nodeVersion = process.version, nodeRequirement = '>=22', packageManager, target = 'repository' } = {}) {
   const checks = []
+  const nodeMatches = checkVersion(nodeVersion, nodeRequirement)
   checks.push(makeCheck({
     id: 'runtime.node.version', target, phase: 'baseline',
-    status: checkVersion(nodeVersion, '>=22') ? 'PASS' : 'FAIL',
-    message: checkVersion(nodeVersion, '>=22') ? `Node.js ${nodeVersion}` : `Node.js ${nodeVersion} does not satisfy >=22`,
-    repairCommand: checkVersion(nodeVersion, '>=22') ? undefined : 'Install Node.js 22 or newer', evidence: { actual: nodeVersion, required: '>=22' },
+    status: nodeMatches ? 'PASS' : 'FAIL',
+    message: nodeMatches ? `Node.js ${nodeVersion}` : `Node.js ${nodeVersion} does not satisfy ${nodeRequirement}`,
+    repairCommand: nodeMatches ? undefined : `Install Node.js satisfying ${nodeRequirement}`, evidence: { actual: nodeVersion, required: nodeRequirement },
   }))
   const pnpm = await executor.run('pnpm', ['--version'])
   const actualPnpm = firstVersion(commandOutput(pnpm))
@@ -399,7 +391,8 @@ export async function checkHBuilderX({ executor = createDefaultExecutor(), sourc
 }
 
 export async function checkBaseline({ repo = registryRoot, source, packageManager, executor = createDefaultExecutor({ cwd: repo }), target = 'repository' } = {}) {
-  const checks = await checkNodeAndPnpm({ executor, packageManager, target })
+  const sourcePackage = await readPackageJson(source, executor)
+  const checks = await checkNodeAndPnpm({ executor, packageManager, nodeRequirement: sourcePackage?.engines?.node, target })
   const rootFiles = [path.join(repo, 'templates.json'), path.join(repo, 'package.json'), path.join(source, 'package.json'), path.join(source, 'vite.config.ts'), path.join(source, 'src/tailwind.css'), path.join(source, 'src/pages.json'), path.join(source, 'src/manifest.json')]
   checks.push(await checkRequiredFiles(rootFiles, { executor, target }))
   checks.push(await checkManifest(path.join(source, 'src/manifest.json'), { executor, target }))

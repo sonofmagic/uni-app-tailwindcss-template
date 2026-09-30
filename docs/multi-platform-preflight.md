@@ -54,7 +54,7 @@ pnpm test:preflight -- --prepare
 
 ### 所有目标
 
-- 使用 Node.js 22 或更高版本，并让 pnpm 版本匹配根 `package.json` 的 `packageManager`。
+- 使用满足 `^22.18.0 || >=24.11.0` 的 Node.js，并让 pnpm 版本匹配根 `package.json` 的 `packageManager`。
 - 根 workspace 和 `packages/template` 的锁文件都能通过 frozen-lockfile 校验。
 - 模板源目录、`templates.json`、`manifest.json`（JSONC）、`src/tailwind.css` 和入口页面存在且可读写。
 - 关闭会占用 HMR bridge 或测试端口的旧 runner；预检会报告残留开发进程和占用端口。

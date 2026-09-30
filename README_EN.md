@@ -37,8 +37,8 @@ The main branch uses Tailwind CSS v4. Switch to the `tailwindcss@3` branch when 
 
 ## Prerequisites
 
-- Node.js `22+`
-- `pnpm`
+- Node.js `^22.18.0 || >=24.11.0`
+- `pnpm 12.8.1`
 - WeChat DevTools for WeChat Mini Programs
 - HBuilderX `5.0+` for Android and iOS App debugging
 - Android SDK, an emulator, or a USB-debugging Android device

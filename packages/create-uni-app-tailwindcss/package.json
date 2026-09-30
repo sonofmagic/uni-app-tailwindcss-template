@@ -24,7 +24,7 @@
     "create-app"
   ],
   "engines": {
-    "node": ">=22"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "bin": {
     "create-uni-app-tailwindcss": "./dist/cli.js"
@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/prompts": "^2.4.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"

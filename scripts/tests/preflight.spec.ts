@@ -6,6 +6,7 @@ import {
   checkAndroidDevice,
   checkHBuilderX,
   checkIosSimulator,
+  checkNodeAndPnpm,
   checkWechat,
   checkVersion,
   createDefaultExecutor,
@@ -92,6 +93,23 @@ describe('preflight status and version helpers', () => {
     expect(checkVersion('5.0.1', '5.0.1')).toBe(true)
     expect(checkVersion('5.0.2', '5.0.1')).toBe(false)
     expect(checkVersion('not-a-version', '>=22')).toBe(false)
+  })
+
+  it.each([
+    ['22.17.0', 'FAIL'], ['22.18.0', 'PASS'], ['22.19.0', 'PASS'],
+    ['23.11.0', 'FAIL'], ['24.10.0', 'FAIL'], ['24.11.0', 'PASS'],
+    ['26.0.0', 'PASS'], ['24.11.0-rc.1', 'FAIL'],
+  ])('checks the declared Node engine range for %s', async (nodeVersion, status) => {
+    const pkg = JSON.parse(await readFile(new URL('../../packages/template/package.json', import.meta.url), 'utf8'))
+    const checks = await checkNodeAndPnpm({
+      nodeVersion,
+      nodeRequirement: pkg.engines.node,
+      packageManager: pkg.packageManager,
+      executor: { async run() { return { code: 0, output: `${pkg.packageManager.split('@')[1]}\n` } } },
+    })
+    expect(checks[0].status).toBe(status)
+    expect(checks[0].evidence.required).toBe(pkg.engines.node)
+    expect(checks[1].status).toBe('PASS')
   })
 })
 
@@ -203,14 +221,14 @@ describe('preflight reports', () => {
       executor: {
         async run(command: string, args: string[]) {
           if (command === 'pnpm' && args.length === 1 && args[0] === '--version') {
-            return { code: 0, output: '12.4.1\n' }
+            return { code: 0, output: '12.8.1\n' }
           }
           return { code: 0, output: 'Chrome Headless 140.0.0\n' }
         },
         async exists() { return true },
         async readFile(filePath: string) {
           return filePath.endsWith('package.json')
-            ? JSON.stringify({ packageManager: 'pnpm@12.4.1' })
+            ? JSON.stringify({ packageManager: 'pnpm@12.8.1', engines: { node: '^22.18.0 || >=24.11.0' } })
             : '{}'
         },
       },
@@ -221,6 +239,7 @@ describe('preflight reports', () => {
 
     expect(result).toMatchObject({ status: expect.stringMatching(/^(PASS|BLOCKED|FAIL)$/) })
     expect(result.checks.length).toBeGreaterThan(0)
+    expect(result.checks.find(check => check.id === 'runtime.node.version')?.evidence.required).toBe('^22.18.0 || >=24.11.0')
     expect(result.checks.every(check => check.id && check.target && check.phase && check.status)).toBe(true)
     expect(result.targetResults).toHaveLength(1)
     expect(result.targetResults[0].target).toBe('h5')

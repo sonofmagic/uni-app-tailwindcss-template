@@ -37,8 +37,8 @@
 
 ## 使用前提
 
-- Node.js `22+`
-- `pnpm`
+- Node.js `^22.18.0 || >=24.11.0`
+- `pnpm 12.8.1`
 - 微信开发者工具（微信小程序）
 - HBuilderX `5.0+`（Android 和 iOS App 调试）
 - Android SDK、模拟器或已开启调试的 Android 设备

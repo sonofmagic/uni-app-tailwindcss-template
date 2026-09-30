@@ -1,7 +1,7 @@
 {
   "name": "uni-app-tailwindcss-template",
   "private": true,
-  "packageManager": "pnpm@12.4.1",
+  "packageManager": "pnpm@12.8.1",
   "author": "ice breaker <hi@sonofmagic.top>",
   "license": "MIT",
   "repository": {
@@ -13,7 +13,7 @@
     "url": "https://github.com/sonofmagic/uni-app-tailwindcss-template/issues"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "scripts": {
     "dev": "node scripts/run-template.mjs @default dev",
@@ -29,7 +29,7 @@
     "build:mp-weixin": "node scripts/run-template.mjs @default build:mp-weixin",
     "lint": "node scripts/run-template.mjs @default lint",
     "lint:fix": "node scripts/run-template.mjs @default lint:fix",
-    "up:deps": "pnpm -r --include-workspace-root up --latest --interactive \"!@dcloudio/*\" \"!@vue/runtime-core\" \"!@vue/shared\" \"!rollup\" \"!vite\" \"!vue\" \"!vue-i18n\"",
+    "up:deps": "pnpm -r --include-workspace-root up --latest --interactive \"!@dcloudio/*\" \"!@vue/runtime-core\" \"!@vue/shared\" \"!pinia\" \"!rollup\" \"!vite\" \"!vue\" \"!vue-i18n\"",
     "up:uni-app": "node scripts/run-template.mjs @default update:uni-app",
     "template": "node scripts/run-template.mjs",
     "templates:matrix": "node scripts/ci-matrix.mjs",
@@ -62,13 +62,14 @@
     "repo:doctor": "repo doctor"
   },
   "devDependencies": {
-    "@dcloudio/uni-automator": "3.0.0-5020420260813003",
+    "@dcloudio/uni-automator": "3.0.0-5020620260917001",
     "@playwright/test": "^1.63.0",
     "jsonc-parser": "^3.3.1",
     "playwright": "^1.63.0",
     "pngjs": "^7.0.0",
-    "repoctl": "5.5.4",
-    "vitest": "5.0.1",
-    "wrangler": "^4.136.3"
+    "repoctl": "5.5.10",
+    "semver": "^7.8.5",
+    "vitest": "5.0.3",
+    "wrangler": "^4.145.0"
   }
 }

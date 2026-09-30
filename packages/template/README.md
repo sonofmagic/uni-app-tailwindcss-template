@@ -15,7 +15,7 @@
 - `Vue 3`
 - `Tailwind CSS v4`
 - `weapp-tailwindcss`
-- `pnpm`
+- `pnpm 12.8.1`
 
 > 当前主分支是 `tailwindcss@4` 版本；如果需要 `tailwindcss@3` 版本，请切换到 `tailwindcss@3` 分支。
 
@@ -32,8 +32,8 @@
 
 ## 使用前提
 
-- Node.js `22+`
-- `pnpm`
+- Node.js `^22.18.0 || >=24.11.0`
+- `pnpm 12.8.1`
 - 微信开发者工具，用于微信小程序
 - HBuilderX `5.0+`，用于 Android 和 iOS App 调试
 - Android SDK、模拟器或已开启调试的 Android 设备
@@ -134,7 +134,13 @@ pnpm update:deps
 pnpm update:uni-app
 ```
 
-uni-app 的兼容性集合不仅包括 `@dcloudio/*`，还包括 `vue`、`vue-i18n`、`@vue/runtime-core`、`@vue/shared`、`vite` 和 `rollup`。不要用通用更新命令单独升级这些包；`update:uni-app` 会通过 UVM 让编译器相关版本保持一致。
+uni-app 的兼容性集合不仅包括 `@dcloudio/*`，还包括 `vue`、`vue-i18n`、`@vue/runtime-core`、`@vue/shared`、`pinia`、`vite` 和 `rollup`。不要用通用更新命令单独升级这些包；`update:uni-app` 会通过 UVM 更新编译器相关版本；Pinia 需另外核对跨端 Vue 运行时要求。
+
+### 当前依赖兼容边界
+
+当前正式版 uni-app 为 `3.0.0-5020620260917001`。Vue、`@vue/runtime-core` 和 `@vue/shared` 固定为 `3.4.21`，与 DCloud 内置编译器及 `@vue/server-renderer` 保持一致；Vite `5.2.8`、Rollup `4.14.3` 沿用官方 UVM 配置。Pinia 保留 `2.2.4`，因为 Pinia 4 要求 Vue `^3.5.11`，高于当前跨端运行时版本。
+
+TypeScript 保留 `6.0.3`，仓库发布工具 repoctl 当前声明支持 TypeScript 5/6。Node.js 要求 `^22.18.0 || >=24.11.0`，与 weapp-tailwindcss 5.5.11 的运行要求一致。升级时先通过 `pnpm dlx @dcloudio/uvm@latest latest --manager manual` 查看正式版组合，再执行 `pnpm update:uni-app` 并核对这些兼容约束。
 
 ## 项目级技能
 

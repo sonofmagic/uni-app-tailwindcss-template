@@ -6,7 +6,6 @@
  * in unit tests and lets the CLI use the same checks for generated projects.
  */
 
-import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -14,6 +13,7 @@ import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
 import { satisfies } from 'semver'
+import { runCommand } from './runtime-process.mjs'
 
 import { loadTemplateRegistry, repoRoot as registryRoot, resolveTemplateSource } from './template-registry.mjs'
 
@@ -157,7 +157,7 @@ export function createDefaultExecutor({ cwd = registryRoot, env = process.env } 
     cwd,
     env,
     run(command, args = [], options = {}) {
-      return execCapture(command, args, options.cwd ?? cwd, options.env ?? env)
+      return runCommand(command, args, { ...options, cwd: options.cwd ?? cwd, env: options.env ?? env })
     },
     commandExists(command) {
       return this.run(process.platform === 'win32' ? 'where' : 'which', [command]).then(result => result.code === 0)
@@ -231,7 +231,7 @@ export async function checkDependencies(source, names, { executor = createDefaul
 export async function checkLockfiles({ repo = registryRoot, source, executor = createDefaultExecutor({ cwd: repo }), target = 'repository' } = {}) {
   const checks = []
   for (const [scope, cwd] of [['workspace', repo], ['template', source]]) {
-    const result = await executor.run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts', '--lockfile-only', '--reporter=silent'], { cwd })
+    const result = await executor.run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts', '--lockfile-only', '--reporter=silent'], { cwd, timeoutMs: 120_000 })
     checks.push(makeCheck({
       id: `repository.lockfile.${scope}`,
       target,
@@ -261,7 +261,7 @@ export async function checkArtifacts(target, source, { executor = createDefaultE
 
 export async function runTargetBuild(record, { executor = createDefaultExecutor(), runBuild = true } = {}) {
   if (!runBuild) return makeCheck({ id: `build.${record.target}.skipped`, target: record.target, phase: 'build', status: 'PASS', message: 'Build skipped by caller', evidence: { skipped: true } })
-  const result = await executor.run('pnpm', ['--dir', record.source, 'run', record.buildScript], { cwd: path.dirname(record.source) })
+  const result = await executor.run('pnpm', ['--dir', record.source, 'run', record.buildScript], { cwd: path.dirname(record.source), timeoutMs: 240_000 })
   if (result.code !== 0) return makeCheck({ id: `build.${record.target}.command`, target: record.target, phase: 'build', status: 'FAIL', message: `Build command failed for ${record.target}`, repairCommand: `pnpm --dir ${record.source} run ${record.buildScript}`, evidence: { output: commandOutput(result), code: result.code } })
   return checkArtifacts(record.target, record.source, { executor })
 }
@@ -369,25 +369,73 @@ export async function checkChrome({ executor = createDefaultExecutor(), target =
   return makeCheck({ id: 'h5.chrome', target, phase: 'runtime', status: 'BLOCKED', message: 'Chrome/Chromium is unavailable', repairCommand: 'Install Google Chrome or set HMR_CHROME_PATH', evidence: { candidates } })
 }
 
-export async function checkHBuilderX({ executor = createDefaultExecutor(), source, target = 'app', cliPath } = {}) {
+export function matchesHBuilderX(version, compilerVersion, compilerPackageVersion = '') {
+  if (!version || !compilerVersion) return false
+  const alpha = /alpha|beta|rc/i.test(version)
+  const compilerAlpha = /alpha|beta|rc/i.test(compilerPackageVersion || compilerVersion)
+  const numeric = version.replace(/-(?:alpha|beta|rc).*$/i, '')
+  const compilerNumeric = String(compilerVersion).replace(/-(?:alpha|beta|rc).*$/i, '')
+  return alpha === compilerAlpha && (numeric === compilerNumeric || numeric.startsWith(`${compilerNumeric}.`))
+}
+
+export async function checkHBuilderX({ executor = createDefaultExecutor(), source, target = 'app', cliPath, checkActive = true } = {}) {
   let compilerVersion
+  let compilerPackageVersion
   try {
     const packageJson = JSON.parse(await executor.readFile(path.join(source, 'node_modules/@dcloudio/vite-plugin-uni/package.json')))
     compilerVersion = packageJson['uni-app']?.compilerVersion
+    compilerPackageVersion = packageJson.version
+    if (!compilerVersion) throw new Error('Missing compilerVersion')
   }
   catch {
     return makeCheck({ id: 'app.hbuilderx.compiler', target, phase: 'runtime', status: 'FAIL', message: 'Could not determine uni-app compiler version', repairCommand: `pnpm --dir ${source} install --frozen-lockfile` })
   }
-  const candidates = [cliPath, process.env.HBUILDERX_CLI_PATH, '/Applications/HBuilderX.app/Contents/MacOS/cli', '/Applications/HBuilderX-Alpha.app/Contents/MacOS/cli'].filter(Boolean)
+  const explicit = cliPath || process.env.HBUILDERX_CLI_PATH
+  const candidates = explicit ? [explicit] : ['/Applications/HBuilderX.app/Contents/MacOS/cli', '/Applications/HBuilderX-Alpha.app/Contents/MacOS/cli']
   const installed = []
   for (const cli of candidates) {
     if (!(await executor.exists(cli))) continue
-    const result = await executor.run(cli, ['version'])
-    const version = firstVersion(commandOutput(result))
-    installed.push({ cli, version, output: commandOutput(result) })
+    const appPath = path.resolve(path.dirname(cli), '../..')
+    const metadata = await executor.run('defaults', ['read', path.join(appPath, 'Contents/Info'), 'CFBundleShortVersionString'])
+    const version = commandOutput(metadata).trim()
+    installed.push({ cli, appPath, version, compatible: metadata.code === 0 && matchesHBuilderX(version, compilerVersion, compilerPackageVersion) })
   }
-  const selected = installed.find(candidate => candidate.version === String(compilerVersion) || candidate.version.startsWith(`${compilerVersion}.`))
-  return makeCheck({ id: 'app.hbuilderx.compiler', target, phase: 'runtime', status: selected ? 'PASS' : 'BLOCKED', message: selected ? `HBuilderX ${selected.version} matches uni-app compiler ${compilerVersion}` : `uni-app compiler ${compilerVersion} requires a matching HBuilderX`, repairCommand: selected ? undefined : 'Install HBuilderX matching @dcloudio/vite-plugin-uni compilerVersion', evidence: { compilerVersion, installed, selected } })
+  const selected = installed.find(candidate => candidate.compatible)
+  let active
+  let status = selected ? 'PASS' : 'BLOCKED'
+  let message = selected ? `HBuilderX ${selected.version} matches uni-app compiler ${compilerVersion}` : `uni-app compiler ${compilerVersion} requires a matching HBuilderX release channel`
+  if (selected && checkActive) {
+    const result = await executor.run(selected.cli, ['version'])
+    const output = commandOutput(result).replace(/\u001b\[[0-9;]*m/g, '').trim()
+    active = { code: result.code, output, timedOut: result.timedOut }
+    // The macOS CLI may return exit 0 while redirecting to another running IDE.
+    if (result.code !== 0 || !matchesHBuilderX(output, compilerVersion, compilerPackageVersion)) {
+      status = 'BLOCKED'
+      message = `HBuilderX CLI cannot reach the matching IDE: ${output || 'no version returned'}`
+    }
+  }
+  return makeCheck({ id: 'app.hbuilderx.compiler', target, phase: 'runtime', status, message,
+    repairCommand: status === 'PASS' ? undefined : 'Use the HBuilderX version and release channel matching the compiler; resolve any conflicting existing IDE session',
+    evidence: { compilerVersion, compilerPackageVersion, installed, selected, active } })
+}
+
+// Preparation and runtime checks share the installed-version/channel selector.
+// The caller owns cleanup only after a successful open initiated here.
+export async function prepareHBuilderX({ source, executor = createDefaultExecutor(), onStarted = () => {} } = {}) {
+  const installed = await checkHBuilderX({ source, executor, checkActive: false })
+  if (installed.status !== 'PASS') return installed
+  const selected = installed.evidence.selected
+  const running = await executor.run('pgrep', ['-f', `${selected.appPath}/Contents/MacOS/`])
+  if (running.code !== 0) {
+    const another = await executor.run('pgrep', ['-f', '/HBuilderX[^/]*\\.app/Contents/MacOS/'])
+    if (another.code === 0) {
+      return { ...installed, status: 'BLOCKED', message: 'An existing HBuilderX session uses a different installation; resolve it before starting the matching IDE' }
+    }
+    const opened = await executor.run('open', ['-a', selected.appPath])
+    if (opened.code !== 0) return { ...installed, status: 'BLOCKED', message: `Cannot open ${selected.appPath}: ${commandOutput(opened)}` }
+    onStarted(selected)
+  }
+  return checkHBuilderX({ source, executor, cliPath: selected.cli })
 }
 
 export async function checkBaseline({ repo = registryRoot, source, packageManager, executor = createDefaultExecutor({ cwd: repo }), target = 'repository' } = {}) {
@@ -418,12 +466,13 @@ export async function runPreflight({ repo = registryRoot, repoRoot, registry, se
     const sourcePackage = await readPackageJson(record.source, executor)
     checks.push(...await checkBaseline({ repo, source: record.source, packageManager: packageManager ?? sourcePackage?.packageManager, executor }))
   }
+  const baselineFailed = aggregateStatus(checks) === 'FAIL'
   const targetResults = []
   const builtTargets = new Set()
   const appCssSmokeTargets = new Set()
   for (const record of records) {
     const targetChecks = []
-    if (aggregateStatus(checks) === 'FAIL') {
+    if (baselineFailed) {
       targetChecks.push(makeCheck({ id: `${record.target}.blocked-by-baseline`, target: record.target, phase: 'build', status: 'FAIL', message: 'Baseline checks failed; target build was not started', evidence: { baseline: checks.filter(check => check.status === 'FAIL').map(check => check.id) } }))
     }
     else {
@@ -477,7 +526,7 @@ async function runtimeChecks(record, options) {
   if (record.target === 'h5') return [await checkChrome({ ...options, target: record.target })]
   if (record.target === 'mp-weixin') return checkWechat({ ...options, source: record.source, target: record.target })
   if (record.target === 'app-android') return [await checkHBuilderX({ ...options, source: record.source, target: record.target }), await checkAndroidDevice({ ...options, target: record.target })]
-  if (record.target === 'app-ios') return [await checkHBuilderX({ ...options, source: record.source, target: record.target }), await checkIosSimulator({ ...options, target: record.target })]
+  if (record.target === 'app-ios') return [await checkHBuilderX({ ...options, source: record.source, target: record.target }), await checkIosSimulator({ ...options, configuredId: options.environment?.DAILY_IOS_DEVICE_ID, target: record.target })]
   if (record.target === 'mp-alipay' || record.target === 'mp-toutiao') return [makeCheck({ id: `${record.target}.runtime.manual`, target: record.target, phase: 'runtime', status: 'BLOCKED', message: `${record.target} artifact is ready; vendor IDE runtime verification is a manual step`, repairCommand: `Open dist/build/${record.target} in the ${record.target === 'mp-alipay' ? 'Alipay' : 'ByteDance'} mini-program IDE`, evidence: { manual: true } })]
   return []
 }
@@ -504,23 +553,6 @@ function firstVersion(output) {
 
 function commandOutput(result) {
   return String(result?.output ?? `${result?.stdout ?? ''}${result?.stderr ?? ''}`)
-}
-
-function execCapture(command, args, cwd, env) {
-  return new Promise(resolve => {
-    let output = ''
-    let settled = false
-    const child = spawn(command, args, { cwd, env: { ...env, FORCE_COLOR: '0' }, stdio: ['ignore', 'pipe', 'pipe'] })
-    for (const stream of [child.stdout, child.stderr]) stream?.on('data', chunk => { output += chunk.toString() })
-    const finish = (code, signal, error) => {
-      if (settled) return
-      settled = true
-      if (error) output += `${error.message}\n`
-      resolve({ code: code ?? 1, signal, output })
-    }
-    child.on('error', error => finish(1, undefined, error))
-    child.on('close', (code, signal) => finish(code, signal))
-  })
 }
 
 export { TARGET_DEFINITIONS as targetDefinitions }

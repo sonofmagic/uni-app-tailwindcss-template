@@ -8,7 +8,9 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as wait } from 'node:timers/promises'
 import { runCleanup } from '../packages/create-uni-app-tailwindcss/scripts/daily-contract.mjs'
-import { runPreflight } from './preflight-core.mjs'
+import { runPreflight, prepareHBuilderX, selectIosSimulator as selectSharedIosSimulator } from './preflight-core.mjs'
+import { runCommand, signalCommand } from './runtime-process.mjs'
+import { checkGitHubRun, runtimeStatus, ExternalBlockError } from './runtime-contract.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const createPackageRoot = path.join(repoRoot, 'packages/create-uni-app-tailwindcss')
@@ -20,7 +22,6 @@ const cleanups = []
 const activeChildren = new Set()
 let interrupted = false
 let interruptedSignal
-const hbuilderxStates = new Map()
 const runtimeProjects = new Map()
 const preflightResults = new Map()
 
@@ -171,26 +172,16 @@ async function runPreflightLane(source, target, lane) {
 }
 
 async function runH5Lane(source, projectRoot) {
-  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-  if (process.platform !== 'darwin' || !(await exists(chrome))) {
-    recordLane(`${source}:h5`, 'BLOCKED', `Google Chrome is unavailable at ${chrome}`, 'Install Google Chrome')
-    return
-  }
   await runRuntimeTestLane(source, 'h5', projectRoot)
 }
 
 async function runWeChatLane(source, projectRoot) {
-  const devtoolsCli = '/Applications/wechatwebdevtools.app/Contents/MacOS/cli'
+  const devtoolsCli = process.env.WECHAT_DEVTOOLS_CLI || '/Applications/wechatwebdevtools.app/Contents/MacOS/cli'
   if (process.platform !== 'darwin' || !(await exists(devtoolsCli))) {
     recordLane(`${source}:mp-weixin`, 'BLOCKED', `WeChat DevTools is unavailable at ${devtoolsCli}`, 'Install WeChat DevTools and enable its service port')
     return
   }
 
-  const login = await execCapture('pnpm', ['exec', 'weapp', 'islogin'], projectRoot)
-  if (login.code !== 0 || !/"login"\s*:\s*true/i.test(`${login.stdout}\n${login.stderr}`)) {
-    recordLane(`${source}:mp-weixin`, 'BLOCKED', 'WeChat DevTools login is expired or its service port is unavailable', `pnpm --dir ${projectRoot} weapp:login`)
-    return
-  }
   await runRuntimeTestLane(source, 'mp-weixin', projectRoot)
 }
 
@@ -279,42 +270,35 @@ async function runGitHubLane() {
     return
   }
 
+  const head = await execCapture('git', ['rev-parse', 'HEAD'], repoRoot)
+  if (head.code !== 0) throw new Error(`Cannot determine tested commit: ${head.output}`)
+  const expectedSha = head.output.trim()
+  const runId = args['github-run-id']
+  if (runId && !/^\d+$/.test(String(runId))) throw new Error('--github-run-id must be a numeric run ID')
   const timeoutMs = numberArg('github-timeout', 45 * 60_000)
   const deadline = Date.now() + timeoutMs
   const scheduledAfter = latestShanghaiSchedule(Date.now())
   let matchedRun
   while (!interrupted && Date.now() <= deadline) {
-    const listed = await execCapture('gh', [
-      'run', 'list', '--workflow', 'hmr-multi-platform.yml', '--event', 'schedule', '--limit', '20',
-      '--json', 'databaseId,status,conclusion,url,createdAt,headSha',
-    ], repoRoot)
+    const fields = 'databaseId,status,conclusion,url,createdAt,headSha,workflowName'
+    const commandArgs = runId
+      ? ['run', 'view', String(runId), '--json', fields]
+      : ['run', 'list', '--workflow', 'hmr-multi-platform.yml', '--event', 'schedule', '--limit', '20', '--json', fields]
+    const listed = await execCapture('gh', commandArgs, repoRoot)
     if (listed.code !== 0) {
-      recordLane('github', 'BLOCKED', tail(listed.output) || 'Unable to query GitHub Actions', 'gh auth refresh -h github.com -s repo')
+      recordLane('github', 'BLOCKED', tail(listed.output) || 'Unable to query GitHub Actions', 'Check gh authentication and connectivity')
       return
     }
-    const runs = JSON.parse(listed.output)
-    matchedRun = runs.find(run => new Date(run.createdAt).getTime() >= scheduledAfter)
-    if (matchedRun?.status === 'completed') break
+    const data = JSON.parse(listed.output)
+    matchedRun = runId ? data : data.find(run => run.headSha === expectedSha && new Date(run.createdAt).getTime() >= scheduledAfter)
+    if (matchedRun && (matchedRun.status === 'completed' || matchedRun.headSha !== expectedSha || matchedRun.workflowName !== 'Quality')) break
     await wait(Math.min(30_000, Math.max(0, deadline - Date.now())))
   }
+  const checked = checkGitHubRun(matchedRun, expectedSha)
+  recordLane('github', checked.status, checked.message,
+    checked.status === 'PASS' ? undefined : matchedRun ? `gh run view ${matchedRun.databaseId} --log-failed` : 'gh workflow run hmr-multi-platform.yml',
+    { url: matchedRun?.url, expectedSha, headSha: matchedRun?.headSha, runId: matchedRun?.databaseId })
 
-  if (!matchedRun) {
-    recordLane('github', 'BLOCKED', `No scheduled Quality run appeared within ${Math.round(timeoutMs / 60_000)} minutes`, 'gh workflow run hmr-multi-platform.yml')
-    return
-  }
-  if (matchedRun.status !== 'completed') {
-    recordLane('github', 'BLOCKED', `Scheduled Quality run is still ${matchedRun.status}`, `gh run watch ${matchedRun.databaseId}`, { url: matchedRun.url })
-    return
-  }
-  if (matchedRun.conclusion !== 'success') {
-    const viewed = await execCapture('gh', ['run', 'view', String(matchedRun.databaseId), '--json', 'jobs'], repoRoot)
-    const failedJobs = viewed.code === 0
-      ? JSON.parse(viewed.output).jobs.filter(job => job.conclusion === 'failure').map(job => job.name)
-      : []
-    recordLane('github', 'FAIL', `Scheduled Quality run concluded ${matchedRun.conclusion}${failedJobs.length ? `; failed jobs: ${failedJobs.join(', ')}` : ''}`, `gh run view ${matchedRun.databaseId} --log-failed`, { url: matchedRun.url })
-    return
-  }
-  recordLane('github', 'PASS', 'Scheduled Quality workflow passed', undefined, { url: matchedRun.url })
 }
 
 async function runLaneSafely(name, lane) {
@@ -322,7 +306,7 @@ async function runLaneSafely(name, lane) {
     await lane()
   }
   catch (error) {
-    recordLane(name, 'FAIL', error instanceof Error ? error.message : String(error), `Review ${path.relative(repoRoot, path.join(reportRoot, `${name}.log`))}`)
+    recordLane(name, error instanceof ExternalBlockError ? 'BLOCKED' : 'FAIL', error instanceof Error ? error.message : String(error), `Review ${path.relative(repoRoot, path.join(reportRoot, `${name}.log`))}`)
   }
 }
 
@@ -339,7 +323,12 @@ async function runRuntimeTestLane(source, platform, projectRoot, extraArgs = [],
     recordLane(name, 'PASS', 'Runtime HMR assertions passed', undefined, { ...details, startedAt, durationMs: Date.now() - started, logPath })
   }
   else if (result.code === 2) {
-    recordLane(name, 'BLOCKED', 'A runtime system prompt requires an unlocked interactive session', 'Unlock the Mac, open the runtime, and dismiss its permission prompt', { ...details, startedAt, durationMs: Date.now() - started, logPath })
+    let detail = 'External runtime is unavailable'
+    try {
+      const summary = JSON.parse(await fs.readFile(path.join(sourceReportDir, 'summary.json'), 'utf8'))
+      detail = summary.platforms?.find(item => item.status === 'BLOCKED')?.error || summary.error || detail
+    } catch {}
+    recordLane(name, 'BLOCKED', detail, `Review ${logPath}`, { ...details, startedAt, durationMs: Date.now() - started, logPath })
   }
   else {
     recordLane(name, 'FAIL', `pnpm exited with ${result.signal ?? result.code ?? 'unknown status'}`, `Review ${path.relative(repoRoot, logPath)}`, { ...details, startedAt, durationMs: Date.now() - started, logPath })
@@ -354,69 +343,17 @@ async function selectIosSimulator() {
     .filter(([runtime]) => runtime.includes('SimRuntime.iOS-'))
     .flatMap(([runtime, entries]) => entries.map(device => ({ ...device, runtime })))
     .filter(device => device.isAvailable !== false)
-  const configured = process.env.DAILY_IOS_DEVICE_ID
-  if (configured) {
-    const device = devices.find(candidate => candidate.udid === configured)
-    return device ? { device } : { error: `DAILY_IOS_DEVICE_ID ${configured} is not available` }
-  }
-  if (devices.length === 1) return { device: devices[0] }
-  const sorted = devices.filter(device => device.lastBootedAt)
-    .sort((left, right) => new Date(right.lastBootedAt) - new Date(left.lastBootedAt))
-  if (sorted.length > 0 && (sorted.length === 1 || sorted[0].lastBootedAt !== sorted[1].lastBootedAt)) {
-    return { device: sorted[0] }
-  }
-  return { error: `Could not select one recently used iOS Simulator from ${devices.length} available devices` }
+  const device = selectSharedIosSimulator(devices, process.env.DAILY_IOS_DEVICE_ID)
+  return device ? { device } : { error: `Could not select an available iOS Simulator; check DAILY_IOS_DEVICE_ID` }
 }
 
 async function ensureHBuilderX(projectRoot) {
-  const compilerPackage = JSON.parse(await fs.readFile(path.join(projectRoot, 'node_modules/@dcloudio/vite-plugin-uni/package.json'), 'utf8'))
-  const compilerVersion = compilerPackage['uni-app']?.compilerVersion
-  if (!compilerVersion) {
-    return { error: 'Could not determine the uni-app compiler version from @dcloudio/vite-plugin-uni' }
-  }
-  if (hbuilderxStates.has(compilerVersion)) return hbuilderxStates.get(compilerVersion)
-  const candidates = [
-    process.env.HBUILDERX_CLI_PATH,
-    '/Applications/HBuilderX.app/Contents/MacOS/cli',
-    '/Applications/HBuilderX-Alpha.app/Contents/MacOS/cli',
-  ].filter(Boolean)
-  const installed = []
-  for (const cli of candidates) {
-    if (!(await exists(cli))) continue
-    const appPath = path.resolve(path.dirname(cli), '../..')
-    const version = (await execCapture('defaults', ['read', path.join(appPath, 'Contents/Info'), 'CFBundleShortVersionString'], repoRoot)).output.trim()
-    installed.push({ appPath, cli, version })
-  }
-  if (installed.length === 0) {
-    const state = { error: `No HBuilderX CLI found in ${candidates.join(', ')}` }
-    hbuilderxStates.set(compilerVersion, state)
-    return state
-  }
-  const selected = installed.find(candidate => candidate.version === compilerVersion || candidate.version.startsWith(`${compilerVersion}.`))
-  if (!selected) {
-    const state = {
-      error: `uni-app compiler ${compilerVersion} requires a matching HBuilderX; installed: ${installed.map(candidate => `${path.basename(candidate.appPath)} ${candidate.version}`).join(', ')}`,
-    }
-    hbuilderxStates.set(compilerVersion, state)
-    return state
-  }
-
-  const { appPath, cli } = selected
-  const wasRunning = processMatches(`${appPath}/Contents/MacOS/`)
-  if (!wasRunning) {
-    const opened = await execCapture('open', ['-a', appPath], repoRoot)
-    if (opened.code !== 0) {
-      const state = { error: tail(opened.output) || `Could not open ${appPath}` }
-      hbuilderxStates.set(compilerVersion, state)
-      return state
-    }
-    const appName = path.basename(appPath, '.app')
-    cleanups.push(async () => quitApplication(appName))
-    await wait(3_000)
-  }
-  const state = { cli, startedByRunner: !wasRunning }
-  hbuilderxStates.set(compilerVersion, state)
-  return state
+  const check = await prepareHBuilderX({ source: projectRoot, onStarted: ({ appPath }) => {
+    cleanups.push(async () => quitApplication(path.basename(appPath, '.app')))
+  } })
+  if (check.status === 'FAIL') throw new Error(check.message)
+  if (check.status !== 'PASS') return { error: check.message }
+  return { cli: check.evidence.selected.cli }
 }
 
 async function requireCommandSuccess(command, commandArgs, cwd, logPath, append = false) {
@@ -429,44 +366,20 @@ async function requireCommandSuccess(command, commandArgs, cwd, logPath, append 
 async function runLogged(command, commandArgs, cwd, logPath, append = false) {
   await fs.mkdir(path.dirname(logPath), { recursive: true })
   const log = createWriteStream(logPath, { flags: append ? 'a' : 'w' })
-  return new Promise((resolve) => {
-    const child = spawn(command, commandArgs, {
-      cwd,
-      detached: process.platform !== 'win32',
-      env: { ...process.env, FORCE_COLOR: '0' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+  try {
+    return await runCommand(command, commandArgs, {
+      cwd, timeoutMs: 20 * 60_000,
+      onSpawn: child => activeChildren.add(child),
+      onClose: child => activeChildren.delete(child),
+      onData: text => { process.stdout.write(text); log.write(text) },
     })
-    activeChildren.add(child)
-    for (const stream of [child.stdout, child.stderr]) {
-      stream.on('data', (chunk) => {
-        process.stdout.write(chunk)
-        log.write(chunk)
-      })
-    }
-    child.on('error', (error) => log.write(`${error.stack ?? error.message}\n`))
-    child.on('exit', (code, signal) => {
-      activeChildren.delete(child)
-      log.end(() => resolve({ code, signal }))
-    })
-  })
+  }
+  finally { await new Promise(resolve => log.end(resolve)) }
 }
 
 function execCapture(command, commandArgs, cwd) {
-  return new Promise((resolve) => {
-    let output = ''
-    const child = spawn(command, commandArgs, {
-      cwd,
-      env: { ...process.env, FORCE_COLOR: '0' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    activeChildren.add(child)
-    child.stdout.on('data', chunk => output += chunk)
-    child.stderr.on('data', chunk => output += chunk)
-    child.on('error', error => output += `${error.message}\n`)
-    child.on('exit', (code, signal) => {
-      activeChildren.delete(child)
-      resolve({ code, signal, output })
-    })
+  return runCommand(command, commandArgs, {
+    cwd, onSpawn: child => activeChildren.add(child), onClose: child => activeChildren.delete(child),
   })
 }
 
@@ -512,15 +425,16 @@ async function writeSummary() {
 }
 
 function overallStatus() {
-  if (results.some(result => result.status === 'FAIL')) return 'FAIL'
-  if (results.some(result => result.status === 'BLOCKED')) return 'BLOCKED'
-  return 'PASS'
+  // Two sources, each with prepare/preflight and four runtime lanes, plus CI.
+  return runtimeStatus(results, 13)
 }
 
 async function cleanup() {
-  for (const child of activeChildren) stopChild(child)
-  await runCleanup(cleanups)
+  const stopped = await Promise.allSettled([...activeChildren].map(stopChild))
+  const errors = stopped.filter(result => result.status === 'rejected').map(result => result.reason)
+  errors.push(...await runCleanup(cleanups))
   cleanups.length = 0
+  if (errors.length) recordLane('runner:cleanup', 'FAIL', errors.map(error => error.message).join('; '))
 }
 
 function installSignalHandler(signal) {
@@ -531,13 +445,11 @@ function installSignalHandler(signal) {
   })
 }
 
-function stopChild(child) {
-  if (child.exitCode !== null) return
-  try {
-    if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGTERM')
-    else child.kill('SIGTERM')
-  }
-  catch {}
+async function stopChild(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  signalCommand(child)
+  await wait(1_000)
+  if (activeChildren.has(child)) signalCommand(child, 'SIGKILL')
 }
 
 async function quitApplication(name) {
@@ -587,11 +499,11 @@ function latestShanghaiSchedule(now) {
 }
 
 function processMatches(pattern) {
-  return spawnSync('pgrep', ['-f', pattern], { stdio: 'ignore' }).status === 0
+  return spawnSync('pgrep', ['-f', pattern], { stdio: 'ignore', timeout: 30_000, killSignal: 'SIGKILL' }).status === 0
 }
 
 function commandExists(command) {
-  return spawnSync('which', [command], { stdio: 'ignore' }).status === 0
+  return spawnSync('which', [command], { stdio: 'ignore', timeout: 30_000, killSignal: 'SIGKILL' }).status === 0
 }
 
 async function exists(filePath) {

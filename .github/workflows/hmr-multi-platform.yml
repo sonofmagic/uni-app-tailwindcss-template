@@ -78,6 +78,9 @@ jobs:
       - name: Validate repository
         run: pnpm repo:doctor
 
+      - name: Test quality runner contracts
+        run: pnpm test:e2e:daily:unit
+
       - name: Preview release plan
         run: pnpm release:status
 

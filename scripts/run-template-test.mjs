@@ -68,7 +68,8 @@ function run(command, commandArgs) {
         return
       }
       if (code !== 0) {
-        reject(new Error(`${command} exited with code ${code ?? 'null'}`))
+        // Preserve the runtime contract: external blockers exit with 2.
+        process.exit(code ?? 1)
         return
       }
       resolve()

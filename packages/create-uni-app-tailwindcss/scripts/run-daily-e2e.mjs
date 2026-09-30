@@ -50,7 +50,10 @@ try {
       results.push({ source, status: 'FAIL', durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) })
     }
   }
-  if (sources.length === 2) contractComparison = await compareSourceContracts()
+  if (sources.length === 2 && !interruptedSignal) {
+    try { contractComparison = await compareSourceContracts() }
+    catch (error) { contractComparison = { matches: false, error: `Cannot compare generated contracts: ${error.message}` } }
+  }
 }
 finally {
   const sourcesComplete = results.length === sources.length

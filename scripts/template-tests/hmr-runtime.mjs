@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync as spawnSyncRaw } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -8,6 +8,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { createFixtureController, getFixtureState } from './hmr-fixture.mjs'
+import { ExternalBlockError, runRuntimeLane, runtimeStatus, statusExitCode } from '../runtime-contract.mjs'
+import { connectWechatRuntime } from '../runtime-wechat.mjs'
+import { runCommand, signalCommand } from '../runtime-process.mjs'
 import {
   checkAndroidDevice,
   checkChrome,
@@ -20,7 +23,6 @@ import {
 const cwd = process.cwd()
 const repoRequire = createRequire(import.meta.url)
 const templateRequire = createRequire(path.join(cwd, 'package.json'))
-const { Automator } = repoRequire('@dcloudio/uni-automator')
 const { chromium } = repoRequire('playwright')
 const { PNG } = repoRequire('pngjs')
 const args = parseArgs(process.argv.slice(2))
@@ -30,8 +32,6 @@ const bridgeFile = path.resolve('.hmr-artifacts/.file-event-bridge')
 const supportedPlatforms = ['h5', 'mp-weixin', 'app-android', 'app-ios']
 const platforms = args.all ? supportedPlatforms : [args.platform]
 const results = []
-
-class ExternalBlockError extends Error {}
 
 let fixture
 let fatalError
@@ -43,7 +43,11 @@ let activeAppProject
 let activeProgram
 let activeBrowser
 let activePage
-let restoreAutomatorEnvironment
+let selectedChrome
+let selectedHBuilderX
+let selectedDevice
+let activeLogs
+let activeReportDir
 let activeDeviceId
 let interrupted = false
 
@@ -57,7 +61,8 @@ main().catch((error) => {
   console.error(`\n[hmr-runtime] ${blocked ? 'BLOCKED' : 'FAILED'}: ${error instanceof Error ? error.stack : String(error)}`)
   process.exitCode = blocked ? 2 : 1
 }).finally(async () => {
-  await cleanup()
+  try { await cleanup() }
+  catch (error) { fatalError = `Cleanup failed: ${error.message}`; process.exitCode = 1 }
   if (results.length > 0 || fatalError) {
     await writeSummary()
   }
@@ -75,44 +80,29 @@ async function main() {
   }
 
   await fs.mkdir(reportRoot, { recursive: true })
-  environment = collectEnvironment(platforms)
-  await preflight(platforms)
-
   for (const platform of platforms) {
-    if (interrupted) {
-      break
-    }
-    const result = { platform, status: 'FAIL', startedAt: new Date().toISOString() }
-    const startedAt = Date.now()
-    results.push(result)
-    try {
+    if (interrupted) break
+    const result = await runRuntimeLane(platform, async () => {
+      await preflight([platform])
+      Object.assign(environment, collectEnvironment([platform]))
       fixture = await createFixtureController()
-      Object.assign(result, await runPlatform(platform))
-      result.status = 'PASS'
-      console.log(`[hmr-runtime] ${platform}: PASS`)
-    }
-    catch (error) {
-      result.error = error instanceof Error ? error.message : String(error)
-      result.status = error instanceof ExternalBlockError ? 'BLOCKED' : 'FAIL'
-      console.error(`[hmr-runtime] ${platform}: ${result.status}: ${result.error}`)
-      if (!args.all) {
-        throw error
-      }
-      process.exitCode = 1
-    }
-    finally {
-      result.durationMs = Date.now() - startedAt
-      result.finishedAt = new Date().toISOString()
-      await cleanupPlatform()
-      await fixture?.restore()
-    }
+      return runPlatform(platform)
+    }, async () => {
+      try { await cleanupPlatform() }
+      finally { await fixture?.restore(); fixture = undefined }
+    })
+    results.push(result)
+    console.log(`[hmr-runtime] ${platform}: ${result.status}${result.error ? `: ${result.error}` : ''}`)
   }
+  if (!interrupted) process.exitCode = statusExitCode(runtimeStatus(results, platforms.length))
+
 }
 
 async function runPlatform(platform) {
   const reportDir = path.join(reportRoot, platform)
   await fs.rm(reportDir, { recursive: true, force: true })
   await fs.mkdir(reportDir, { recursive: true })
+  activeReportDir = reportDir
 
   await fixture.apply('initial')
   if (platform.startsWith('app-')) {
@@ -124,15 +114,11 @@ async function runPlatform(platform) {
     FORCE_COLOR: '0',
     CHOKIDAR_INTERVAL: '200',
     CHOKIDAR_USEPOLLING: 'true',
-    UNI_AUTOMATOR_COMPILE: 'false',
     HMR_SMOKE_USE_POLLING: 'true',
-  }
-  if (platform !== 'h5') {
-    env.UNI_AUTOMATOR_WS_ENDPOINT = `ws://localhost:${port}`
   }
 
   const launch = await startPlatform(platform, env, port)
-  const logs = []
+  const logs = activeLogs = []
   activeChild = launch.child
   collectLogs(activeChild, logs, platform)
 
@@ -160,7 +146,10 @@ async function runPlatform(platform) {
     await activePage.goto(launch.url)
   }
   else {
-    activeProgram = await connectAutomator(platform, port)
+    activeProgram = await connectWechatRuntime(await import(templateRequire.resolve('weapp-ide-cli')), {
+      projectPath: path.join(cwd, 'dist/dev/mp-weixin'), timeout: timeoutMs,
+      cliPath: process.env.WECHAT_DEVTOOLS_CLI,
+    })
     await activeProgram.reLaunch('/pages/__daily_hmr__/index')
     activeProgram.on('exception', error => runtimeErrors.push(String(error?.message ?? error)))
     activeProgram.on('console', (entry) => {
@@ -208,7 +197,7 @@ async function runAppPlatform(platform, reportDir) {
   const deviceId = resolveDeviceId(platform)
   activeDeviceId = deviceId
   const cli = hbuilderxPaths().cli
-  const logs = []
+  const logs = activeLogs = []
   activeAppProject = await fs.mkdtemp(path.join(tmpdir(), 'uni-app-hmr-app-'))
   const env = {
     ...process.env,
@@ -223,8 +212,8 @@ async function runAppPlatform(platform, reportDir) {
 
   const appProject = activeAppProject
   await waitForFile(path.join(appProject, 'manifest.json'), content => content.length > 0, timeoutMs)
-  const opened = spawnSync(cli, ['project', 'open', '--path', appProject], { cwd, encoding: 'utf8' })
-  if (opened.status !== 0) {
+  const opened = await runCommand(cli, ['project', 'open', '--path', appProject], { cwd })
+  if (opened.code !== 0) {
     throw new Error(`HBuilderX could not open the compiled App project: ${(opened.stderr || opened.stdout).trim()}`)
   }
   const launchArgs = [
@@ -252,7 +241,6 @@ async function runAppPlatform(platform, reportDir) {
   collectLogs(activeChild, logs, platform)
   await waitForOutput(activeChild, /应用【.*】已启动|项目 \[.*\] 已启动|App Launch/i, timeoutMs)
   if (platform === 'app-ios') {
-    await waitUntil(() => logs.some(entry => /App Launch at/i.test(entry.text)), timeoutMs, 500)
     await sleep(1_000)
     if (await iosExternalPromptVisible()) {
       throw new ExternalBlockError('An iOS system or runtime prompt requires an unlocked interactive session')
@@ -367,32 +355,11 @@ async function startPlatform(platform, env, port) {
     }
   }
 
-  const outputPlatform = platform.startsWith('app-') ? 'app' : platform
-  const child = spawnUni(['-p', outputPlatform], env)
-  const automatorFile = path.join(cwd, 'dist', 'dev', '.automator', outputPlatform, '.automator.json')
+  const child = spawnUni(['-p', platform], env)
   return {
     child,
-    ready: waitForFile(automatorFile, content => content.includes(`localhost:${port}`), timeoutMs),
+    ready: waitForOutput(child, /Build complete\. Watching for changes/, timeoutMs),
   }
-}
-
-async function connectAutomator(platform, port) {
-  const automator = new Automator()
-  const common = { projectPath: cwd, cliPath: cwd, compile: false, port, timeout: timeoutMs }
-  restoreAutomatorEnvironment = setEnvironment({
-    UNI_AUTOMATOR_COMPILE: 'false',
-    UNI_AUTOMATOR_WS_ENDPOINT: `ws://localhost:${port}`,
-    UNI_OUTPUT_DIR: path.join(cwd, 'dist', 'dev', platform),
-  })
-
-  return automator.launch({
-    ...common,
-    platform,
-    'mp-weixin': {
-      executablePath: '/Applications/wechatwebdevtools.app/Contents/MacOS/cli',
-      teardown: 'disconnect',
-    },
-  })
 }
 
 async function waitForRuntimeState(program, platform, stateName) {
@@ -564,29 +531,36 @@ function spawnUni(childArgs, env) {
 async function preflight(selected) {
   repoRequire.resolve('playwright')
   repoRequire.resolve('pngjs')
-  repoRequire.resolve('@dcloudio/uni-automator')
-  await fs.access(chromePath())
 
   const sharedExecutor = createDefaultExecutor({ cwd })
   const sharedChecks = []
-  if (selected.includes('h5')) sharedChecks.push(await checkChrome({ executor: sharedExecutor, target: 'h5' }))
+  if (selected.includes('h5')) {
+    const check = await checkChrome({ executor: sharedExecutor, target: 'h5' })
+    sharedChecks.push(check)
+    selectedChrome = check.evidence.path
+  }
   if (selected.includes('mp-weixin')) sharedChecks.push(...await checkWechat({ executor: sharedExecutor, source: cwd, target: 'mp-weixin' }))
-  if (selected.some(platform => platform.startsWith('app-'))) sharedChecks.push(await checkHBuilderX({ executor: sharedExecutor, source: cwd, target: 'app', cliPath: hbuilderxPaths().cli }))
-  if (selected.includes('app-android')) sharedChecks.push(await checkAndroidDevice({ executor: sharedExecutor, target: 'app-android' }))
-  if (selected.includes('app-ios')) sharedChecks.push(await checkIosSimulator({ executor: sharedExecutor, target: 'app-ios' }))
-  const sharedFailure = sharedChecks.find(check => check.status === 'FAIL' || check.status === 'BLOCKED')
+  if (selected.some(platform => platform.startsWith('app-'))) {
+    const check = await checkHBuilderX({ executor: sharedExecutor, source: cwd, target: 'app', cliPath: args['hbuilderx-cli'] })
+    sharedChecks.push(check)
+    selectedHBuilderX = check.evidence.selected?.cli
+  }
+  if (selected.includes('app-android')) {
+    const check = await checkAndroidDevice({ executor: sharedExecutor, target: 'app-android', requestedId: args['device-id'] })
+    sharedChecks.push(check)
+    selectedDevice = { id: check.evidence.selected }
+  }
+  if (selected.includes('app-ios')) {
+    const check = await checkIosSimulator({ executor: sharedExecutor, target: 'app-ios', configuredId: args['device-id'] || process.env.DAILY_IOS_DEVICE_ID })
+    sharedChecks.push(check)
+    selectedDevice = check.evidence.selected
+  }
+  environment.preflight ??= {}
+  environment.preflight[selected[0]] = sharedChecks
+  const sharedFailure = sharedChecks.find(check => check.status === 'FAIL') || sharedChecks.find(check => check.status === 'BLOCKED')
   if (sharedFailure) {
     if (sharedFailure.status === 'BLOCKED') throw new ExternalBlockError(sharedFailure.message)
     throw new Error(sharedFailure.message)
-  }
-
-  if (selected.includes('mp-weixin')) {
-    await fs.access('/Applications/wechatwebdevtools.app/Contents/MacOS/cli')
-    const check = spawnSync('pnpm', ['exec', 'weapp', 'islogin'], { cwd, encoding: 'utf8' })
-    const output = `${check.stdout ?? ''}\n${check.stderr ?? ''}`
-    if (check.status !== 0 || !/"login"\s*:\s*true/i.test(output)) {
-      throw new Error('WeChat DevTools is not logged in or its service port is unavailable. Run pnpm weapp:login first.')
-    }
   }
 
   if (selected.some(platform => platform.startsWith('app-'))) {
@@ -619,14 +593,11 @@ function collectBaseEnvironment() {
 }
 
 function collectEnvironment(selected) {
-  const info = {
-    ...collectBaseEnvironment(),
-    chrome: commandText(chromePath(), ['--version']),
-  }
+  const info = collectBaseEnvironment()
+  if (selected.includes('h5')) info.chrome = commandText(chromePath(), ['--version'])
   if (selected.includes('mp-weixin')) {
     info.wechatDevtools = {
       cli: '/Applications/wechatwebdevtools.app/Contents/MacOS/cli',
-      islogin: commandText('pnpm', ['exec', 'weapp', 'islogin']),
     }
   }
   if (selected.some(platform => platform.startsWith('app-'))) {
@@ -644,7 +615,7 @@ function collectEnvironment(selected) {
   }
   if (selected.includes('app-ios')) {
     const deviceId = resolveDeviceId('app-ios')
-    const simulator = findBootedIosSimulator(deviceId)
+    const simulator = selectedDevice
     info.ios = {
       deviceId,
       name: simulator.name,
@@ -655,52 +626,23 @@ function collectEnvironment(selected) {
 }
 
 function resolveDeviceId(platform) {
-  if (platform === 'app-android') {
-    const output = spawnSync('adb', ['devices'], { encoding: 'utf8' }).stdout
-    const devices = output.split('\n').slice(1).filter(line => /\tdevice\s*$/.test(line)).map(line => line.split('\t')[0])
-    if (args['device-id'] && !args.all) {
-      if (!devices.includes(args['device-id'])) {
-        throw new Error(`Android device ${args['device-id']} is not online`)
-      }
-      return args['device-id']
-    }
-    if (devices.length !== 1) {
-      throw new Error(`Expected exactly one online Android device, found: ${devices.join(', ') || 'none'}`)
-    }
-    return devices[0]
-  }
-  const devices = listBootedIosSimulators()
-  if (args['device-id'] && !args.all) {
-    const device = devices.find(candidate => candidate.udid === args['device-id'])
-    if (!device) {
-      throw new Error(`iOS simulator ${args['device-id']} is not booted`)
-    }
-    return device.udid
-  }
-  if (devices.length !== 1) {
-    throw new Error(`Expected exactly one booted iOS simulator, found: ${devices.map(device => device.udid).join(', ') || 'none'}`)
-  }
-  return devices[0].udid
+  const id = platform === 'app-android' ? selectedDevice?.id : selectedDevice?.udid
+  if (!id) throw new ExternalBlockError(`No device selected by preflight for ${platform}`)
+  return id
 }
 
-function findBootedIosSimulator(deviceId) {
-  return listBootedIosSimulators().find(device => device.udid === deviceId)
-}
-
-function listBootedIosSimulators() {
-  const output = spawnSync('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], { encoding: 'utf8' }).stdout
-  const runtimes = JSON.parse(output).devices
-  return Object.entries(runtimes).flatMap(([runtime, devices]) => devices
-    .filter(device => device.state === 'Booted')
-    .map(device => ({ ...device, runtime })))
+// Synchronous device probes must also be bounded; builds use their own deadline.
+function spawnSync(command, commandArgs, options = {}) {
+  return spawnSyncRaw(command, commandArgs, { timeout: 30_000, killSignal: 'SIGKILL', ...options })
 }
 
 function hbuilderxPaths() {
-  const cli = path.resolve(args['hbuilderx-cli'] ?? process.env.HBUILDERX_CLI_PATH ?? '/Applications/HBuilderX.app/Contents/MacOS/cli')
+  const cli = path.resolve(selectedHBuilderX ?? args['hbuilderx-cli'] ?? process.env.HBUILDERX_CLI_PATH ?? '/Applications/HBuilderX.app/Contents/MacOS/cli')
   return { cli }
 }
 
 function chromePath() {
+  if (selectedChrome) return selectedChrome
   if (process.env.HMR_CHROME_PATH) {
     return process.env.HMR_CHROME_PATH
   }
@@ -711,66 +653,45 @@ function chromePath() {
 }
 
 async function cleanupPlatform() {
-  if (activeBrowser) {
-    await activeBrowser.close()
-    activeBrowser = undefined
-    activePage = undefined
+  const errors = []
+  const attempt = async (action) => {
+    try { await action() }
+    catch (error) { errors.push(error) }
   }
-  if (activeProgram) {
-    try {
-      activeProgram.disconnect()
-    }
-    catch {}
-    activeProgram = undefined
+  if (activeBrowser) await attempt(() => activeBrowser.close())
+  if (activeProgram) await attempt(() => activeProgram.disconnect())
+  if (activeChild) await attempt(() => stopChild(activeChild, activeChildStopSignal))
+  if (activeCompilerChild) await attempt(() => stopChild(activeCompilerChild, 'SIGTERM'))
+  if (activeReportDir && activeLogs) {
+    await attempt(() => fs.writeFile(path.join(activeReportDir, 'dev.log'), activeLogs.map(entry => entry.text).join(''), 'utf8'))
   }
-  if (activeChild && activeChild.exitCode === null) {
-    await stopChild(activeChild, activeChildStopSignal)
-    if (activeChildStopSignal === 'SIGINT') {
-      await sleep(2_000)
-    }
-  }
-  if (activeCompilerChild && activeCompilerChild.exitCode === null) {
-    await stopChild(activeCompilerChild, 'SIGTERM')
-  }
-  restoreAutomatorEnvironment?.()
-  restoreAutomatorEnvironment = undefined
-  await fs.rm(bridgeFile, { force: true })
-  if (activeAppProject) {
-    await fs.rm(activeAppProject, { recursive: true, force: true })
-  }
-  activeDeviceId = undefined
-  activeChild = undefined
-  activeCompilerChild = undefined
-  activeAppProject = undefined
+  await attempt(() => fs.rm(bridgeFile, { force: true }))
+  if (activeAppProject) await attempt(() => fs.rm(activeAppProject, { recursive: true, force: true }))
+  activeBrowser = activePage = activeProgram = undefined
+  activeLogs = activeReportDir = undefined
+  selectedChrome = selectedHBuilderX = selectedDevice = undefined
+  activeDeviceId = activeChild = activeCompilerChild = activeAppProject = undefined
   activeChildStopSignal = 'SIGTERM'
+  if (errors.length) throw new AggregateError(errors, errors.map(error => error.message).join('; '))
 }
 
 async function stopChild(child, signal) {
-  try {
-    process.kill(-child.pid, signal)
-  }
-  catch {
-    child.kill(signal)
-  }
-  await Promise.race([new Promise(resolve => child.once('exit', resolve)), sleep(8_000)])
-  if (child.exitCode === null) {
-    try {
-      process.kill(-child.pid, 'SIGKILL')
-    }
-    catch {
-      child.kill('SIGKILL')
-    }
-    await Promise.race([new Promise(resolve => child.once('exit', resolve)), sleep(3_000)])
-  }
+  if (child.exitCode !== null || child.signalCode !== null) return
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 8_000)
+    child.once('exit', () => { clearTimeout(timer); resolve() })
+    signalCommand(child, signal)
+  })
+  if (child.exitCode === null && child.signalCode === null) signalCommand(child, 'SIGKILL')
 }
 
 async function cleanup() {
-  await cleanupPlatform()
-  await fixture?.restore()
+  try { await cleanupPlatform() }
+  finally { await fixture?.restore() }
 }
 
 async function writeSummary() {
-  const status = !fatalError && results.length === platforms.length && results.every(result => result.status === 'PASS') ? 'PASS' : 'FAIL'
+  const status = fatalError ? 'FAIL' : runtimeStatus(results, platforms.length)
   const summary = {
     status,
     generatedAt: new Date().toISOString(),
@@ -886,7 +807,7 @@ async function dismissRuntimeWarning(platform) {
     return
   }
   spawnSync('adb', ['-s', activeDeviceId, 'shell', 'uiautomator', 'dump', '/sdcard/hmr-window.xml'], { encoding: 'utf8' })
-  const xml = spawnSync('adb', ['-s', activeDeviceId, 'exec-out', 'cat', '/sdcard/hmr-window.xml'], { encoding: 'utf8' }).stdout
+  const xml = spawnSync('adb', ['-s', activeDeviceId, 'exec-out', 'cat', '/sdcard/hmr-window.xml'], { encoding: 'utf8', timeout: 30_000 }).stdout
   const bounds = xml.match(/text="(?:ignore|忽略)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/i)
   if (bounds) {
     const x = Math.round((Number(bounds[1]) + Number(bounds[3])) / 2)
@@ -933,7 +854,7 @@ async function readDeviceAppResources(platform) {
     activeDeviceId,
     'io.dcloud.HBuilder',
     'data',
-  ], { encoding: 'utf8' }).stdout.trim()
+  ], { encoding: 'utf8', timeout: 30_000 }).stdout.trim()
   const base = path.join(container, 'Documents', 'Pandora', 'apps', 'HBuilder', 'www')
   return {
     css: await fs.readFile(path.join(base, 'app.css'), 'utf8'),
@@ -961,9 +882,9 @@ function parseHbuilderxRuntimeErrors(log) {
 
 function appProcessId(platform) {
   if (platform === 'app-android') {
-    return spawnSync('adb', ['-s', activeDeviceId, 'shell', 'pidof', 'io.dcloud.HBuilder'], { encoding: 'utf8' }).stdout.trim()
+    return spawnSync('adb', ['-s', activeDeviceId, 'shell', 'pidof', 'io.dcloud.HBuilder'], { encoding: 'utf8', timeout: 30_000 }).stdout.trim()
   }
-  const output = spawnSync('xcrun', ['simctl', 'spawn', activeDeviceId, 'launchctl', 'list'], { encoding: 'utf8' }).stdout
+  const output = spawnSync('xcrun', ['simctl', 'spawn', activeDeviceId, 'launchctl', 'list'], { encoding: 'utf8', timeout: 30_000 }).stdout
   return output.split('\n').find(line => line.includes('io.dcloud.HBuilder'))?.trim().split(/\s+/)[0] ?? ''
 }
 
@@ -1097,24 +1018,9 @@ function installSignalHandler(signal) {
     interrupted = true
     process.exitCode = 1
     fixture?.restoreSync()
-    void cleanup()
+    signalCommand(activeChild, activeChildStopSignal)
+    signalCommand(activeCompilerChild)
   })
-}
-
-function setEnvironment(values, previousRestore) {
-  const previous = new Map(Object.keys(values).map(key => [key, process.env[key]]))
-  Object.assign(process.env, values)
-  return () => {
-    for (const [key, value] of previous) {
-      if (value === undefined) {
-        delete process.env[key]
-      }
-      else {
-        process.env[key] = value
-      }
-    }
-    previousRestore?.()
-  }
 }
 
 function sleep(ms) {

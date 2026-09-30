@@ -80,7 +80,7 @@ pnpm --dir packages/template exec weapp islogin
 
 ### App Android
 
-安装 HBuilderX，并确保其版本与生成项目中的 `@dcloudio/vite-plugin-uni` `compilerVersion` 匹配。安装 Android platform-tools，连接一个已授权设备或启动一个模拟器：
+安装 HBuilderX，并确保其版本与生成项目中的 `@dcloudio/vite-plugin-uni` `compilerVersion` 和正式/Alpha 通道均匹配。当前正式编译器匹配 HBuilderX 5.26，默认优先选择 `/Applications/HBuilderX.app`；可用 `HBUILDERX_CLI_PATH` 显式指定。预检和执行使用同一选择结果，并核对 CLI 实际连接的版本。若已有 Alpha 会话导致正式 CLI 重定向，报告 `BLOCKED`，由用户处理已有 IDE 会话后重试，不自动关闭它。安装 Android platform-tools，连接一个已授权设备或启动一个模拟器：
 
 ```bash
 adb devices
@@ -128,3 +128,17 @@ pnpm test:hmr:app:android
 本预检针对开发和调试测试。空 DCloud AppID、包名、签名、证书和发布平台权限不会阻断构建预检，但会在进入发布流程前单独检查。发布前仍需替换模板 `src/manifest.json` 的 `appid`，配置真实包名和签名，并在目标平台后台完成合法的发布配置。
 
 预检不会新增 `@dcloudio/uni-automator` 用法。微信相关自动化统一通过 `weapp-ide-cli` 和 DevTools 服务执行；现有运行时测试中的会话应在 suite 级别复用，并通过 `miniProgram.reLaunch(route)` 切换页面，避免每个页面重复启动 DevTools。
+
+## 本地完整运行与指定 CI 验证
+
+`pnpm test:daily:runtime` 创建 candidate/latest 独立项目，逐项运行 H5、微信、iOS、Android。一个平台受阻不会中断其他平台；微信会话通过 `weapp-ide-cli` 连接实际 `dist/dev/mp-weixin` 目录。默认检查当天调度的 Quality，且要求运行的提交 SHA 与本地 HEAD 一致。手动验收可指定当前提交的运行：
+
+```bash
+pnpm test:daily:runtime -- --github-run-id 123456789
+```
+
+运行 ID 必须属于 Quality 工作流和当前 HEAD。错误提交、失败或取消的运行均为 `FAIL`；尚未完成或无法访问的运行是 `BLOCKED`。未提交的本地修改仍需本地测试，远端 CI 仅证明记录中的提交。
+
+外部环境探测默认 30 秒超时，构建和 HMR 使用各自的限时。超时会保留输出并清理该命令启动的进程组；已有 IDE 和设备不属于这些进程组。缺少环境为 `BLOCKED`，编译、断言和清理错误为 `FAIL`；`SKIP`、缺失场景不能算通过。
+
+根工具链暂将 `@icebreakers/monorepo@5.5.10` 的 logger/worker 限定到 pnpm 10 系列，以满足其 workspace parser 的实际 peer 范围。该覆盖只作用于这个上游版本；更新 repoctl 时应重新核对并移除已不需要的覆盖，不用忽略 peer 告警替代修复。

@@ -3,10 +3,10 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-import { setTimeout as wait } from 'node:timers/promises'
 import { loadTemplateRegistry, repoRoot } from './template-registry.mjs'
 import {
   createDefaultExecutor,
+  prepareHBuilderX,
   expandTargets,
   runPreflight,
   selectIosSimulator,
@@ -113,7 +113,7 @@ async function prepareEnvironment(registry, selection, executor) {
         if (selected && selected.state !== 'Booted') {
           const boot = await executor.run('xcrun', ['simctl', 'boot', selected.udid])
           if (boot.code === 0 || /already booted|current state: Booted/i.test(boot.output ?? '')) {
-            ownedSimulators.push(selected.udid)
+            if (boot.code === 0) ownedSimulators.push(selected.udid)
             await executor.run('xcrun', ['simctl', 'bootstatus', selected.udid, '-b'])
           }
         }
@@ -124,22 +124,11 @@ async function prepareEnvironment(registry, selection, executor) {
     }
   }
   if (shouldPrepareApp && process.platform === 'darwin') {
-    const candidates = [process.env.HBUILDERX_CLI_PATH, '/Applications/HBuilderX.app/Contents/MacOS/cli', '/Applications/HBuilderX-Alpha.app/Contents/MacOS/cli'].filter(Boolean)
-    const cli = candidates.find(candidate => candidate.endsWith('/cli') && candidate.includes('.app/Contents/MacOS/'))
-    if (cli && await executor.exists(cli)) {
-      const appPath = cli.replace(/\/Contents\/MacOS\/cli$/, '')
-      const running = await executor.run('pgrep', ['-f', `${appPath}/Contents/MacOS/`])
-      if (running.code !== 0) {
-        const opened = await executor.run('open', ['-a', appPath])
-        if (opened.code === 0) {
-          ownedApplications.push(path.basename(appPath, '.app'))
-          for (let attempt = 0; attempt < 10; attempt += 1) {
-            const version = await executor.run(cli, ['version'])
-            if (version.code === 0) break
-            await wait(500)
-          }
-        }
-      }
+    const sources = [...new Set(targets.filter(target => target.target.startsWith('app-')).map(target => target.source))]
+    for (const source of sources) {
+      await prepareHBuilderX({ source, executor, onStarted: ({ appPath }) => {
+        ownedApplications.push(path.basename(appPath, '.app'))
+      } })
     }
   }
   return async () => {

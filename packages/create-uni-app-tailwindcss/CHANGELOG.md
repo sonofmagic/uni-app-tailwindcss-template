@@ -1,5 +1,15 @@
 # create-uni-app-tailwindcss
 
+## 0.1.4
+
+### Patch Changes
+
+- upgrade deps
+
+- 修正 uni-app 模板的 ESLint 兼容配置，移除无用演示日志和旧微信自动化依赖，统一使用 weapp-ide-cli。
+
+- 升级模板与仓库工具链依赖，统一 uni-app 编译器和 Vue 兼容版本，更新 pnpm 与 Node.js 要求，并修复脚手架依赖一致性及运行环境检查。
+
 ## 0.1.3
 
 ### Patch Changes

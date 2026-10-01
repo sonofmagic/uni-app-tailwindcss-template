@@ -256,7 +256,8 @@ jobs:
         with:
           name: hmr-${{ matrix.template }}-${{ matrix.target }}-${{ github.run_id }}
           path: ${{ matrix.source }}/.hmr-artifacts
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
 
   hmr-h5:
@@ -292,7 +293,8 @@ jobs:
         with:
           name: hmr-h5-${{ github.run_id }}
           path: packages/template/.hmr-artifacts
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
 
   workers:

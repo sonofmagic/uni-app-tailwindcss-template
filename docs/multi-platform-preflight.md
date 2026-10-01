@@ -62,7 +62,7 @@ pnpm test:preflight -- --prepare
 
 ### H5
 
-安装 Chrome 并确保当前用户可以启动 headless Chrome、访问本机 loopback。正式运行 H5 HMR 前，使用：
+浏览器预检与 HMR 都通过 Playwright 启动同一个可执行文件，并验证本机 loopback 页面。Linux CI 优先使用 `pnpm exec playwright install --with-deps chromium` 安装的 Chromium；macOS 优先使用本机 Chrome。自动选择的浏览器启动失败时继续尝试其他候选，并保留每次探测输出。`HMR_CHROME_PATH` 可指定绝对路径、相对工作目录的路径或 PATH 命令名；解析后的绝对路径供预检和 HMR 共用。显式指定的浏览器失败时报告 `BLOCKED`，不自动更换。正式运行 H5 HMR 前，使用：
 
 ```bash
 pnpm test:hmr:h5

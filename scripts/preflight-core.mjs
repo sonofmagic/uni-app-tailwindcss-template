@@ -6,12 +6,11 @@
  * in unit tests and lets the CLI use the same checks for generated projects.
  */
 
-import { once } from 'node:events'
 import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { createServer } from 'node:http'
 import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import { satisfies } from 'semver'
 import { runCommand } from './runtime-process.mjs'
 
@@ -342,31 +341,48 @@ export async function checkWechat({ executor = createDefaultExecutor(), source, 
   return [cli, makeCheck({ id: 'wechat.login', target, phase: 'runtime', status: loggedIn ? 'PASS' : 'BLOCKED', message: loggedIn ? 'WeChat DevTools is logged in' : 'WeChat DevTools login is expired or its service port is unavailable', repairCommand: loggedIn ? undefined : `pnpm --dir ${source} exec weapp login`, evidence: { output, code: login.code } })]
 }
 
-export async function checkChrome({ executor = createDefaultExecutor(), target = 'h5' } = {}) {
-  const configured = process.env.HMR_CHROME_PATH
-  const candidates = [configured, process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : 'google-chrome', 'chromium', 'chromium-browser'].filter(Boolean)
-  try {
-    const require = createRequire(import.meta.url)
-    candidates.push(require('playwright').chromium.executablePath())
+export async function checkChrome({ executor = createDefaultExecutor(), target = 'h5', configured = process.env.HMR_CHROME_PATH, candidates } = {}) {
+  if (!candidates) {
+    let bundled
+    try { bundled = createRequire(import.meta.url)('playwright').chromium.executablePath() }
+    catch {}
+    candidates = process.platform === 'darwin'
+      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', bundled]
+      : [bundled, 'google-chrome', 'chromium', 'chromium-browser']
   }
-  catch {}
-  for (const candidate of candidates) {
-    const result = await executor.run(candidate, ['--version'])
-    if (result.code !== 0) continue
-    const server = createServer((_request, response) => {
-      response.writeHead(200, { 'content-type': 'text/plain' })
-      response.end('preflight-ok')
-    })
-    server.listen(0, '127.0.0.1')
-    await once(server, 'listening')
-    const address = server.address()
-    const port = typeof address === 'object' && address ? address.port : 0
-    const headless = await executor.run(candidate, ['--headless=new', '--disable-gpu', '--no-sandbox', '--dump-dom', `http://127.0.0.1:${port}`])
-    server.close()
-    const status = headless.code === 0 ? 'PASS' : 'BLOCKED'
-    return makeCheck({ id: 'h5.chrome', target, phase: 'runtime', status, message: status === 'PASS' ? `${candidate} is available and starts headless` : `${candidate} is installed but cannot start headless`, repairCommand: status === 'PASS' ? undefined : 'Start Chrome once interactively or set HMR_CHROME_PATH to a working browser', evidence: { path: candidate, version: commandOutput(result), headless: { code: headless.code, output: commandOutput(headless) } } })
+  // An explicit override is authoritative. Automatic discovery can fall back.
+  const requested = [...new Set((configured ? [configured] : candidates).filter(Boolean))]
+  const attempts = []
+  for (const candidate of requested) {
+    let executablePath = candidate
+    if (!path.isAbsolute(executablePath)) {
+      if (candidate.includes('/') || candidate.includes('\\')) {
+        executablePath = path.resolve(executor.cwd ?? process.cwd(), candidate)
+      }
+      else {
+        const located = await executor.run(process.platform === 'win32' ? 'where' : 'which', [candidate])
+        executablePath = located.code === 0 ? commandOutput(located).trim().split(/\r?\n/)[0] : ''
+      }
+    }
+    if (!path.isAbsolute(executablePath)) {
+      attempts.push({ candidate, error: 'Executable was not found on PATH' })
+      continue
+    }
+    const result = await executor.run(executablePath, ['--version'])
+    if (result.code !== 0) {
+      attempts.push({ candidate, path: executablePath, code: result.code, output: commandOutput(result) })
+      continue
+    }
+    // Probe through Playwright, exactly as HMR does, not Chrome's separate
+    // --dump-dom CLI path. The command deadline also bounds browser cleanup.
+    const headless = await executor.run(process.execPath, [fileURLToPath(new URL('./browser-probe.mjs', import.meta.url)), executablePath])
+    const evidence = { path: executablePath, version: commandOutput(result), headless: { code: headless.code, output: commandOutput(headless), timedOut: headless.timedOut } }
+    attempts.push({ candidate, ...evidence })
+    if (headless.code === 0 && commandOutput(headless).includes('preflight-ok')) {
+      return makeCheck({ id: 'h5.chrome', target, phase: 'runtime', status: 'PASS', message: `${executablePath} starts through Playwright and reaches loopback`, evidence: { ...evidence, attempts } })
+    }
   }
-  return makeCheck({ id: 'h5.chrome', target, phase: 'runtime', status: 'BLOCKED', message: 'Chrome/Chromium is unavailable', repairCommand: 'Install Google Chrome or set HMR_CHROME_PATH', evidence: { candidates } })
+  return makeCheck({ id: 'h5.chrome', target, phase: 'runtime', status: 'BLOCKED', message: 'No selected Chrome/Chromium could start through Playwright and reach loopback', repairCommand: 'Run pnpm exec playwright install --with-deps chromium, or set HMR_CHROME_PATH to a working browser executable', evidence: { candidates: requested, attempts } })
 }
 
 export function matchesHBuilderX(version, compilerVersion, compilerPackageVersion = '') {

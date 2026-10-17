@@ -216,6 +216,8 @@ describe('GitHub verification', () => {
     const releaseWorkflow = await readFile(path.join(root, '.github/workflows/release.yml'), 'utf8')
     expect(releaseWorkflow).toContain('fetch-depth: 0')
     expect(releaseWorkflow).toContain('timeout-minutes: 15')
+    expect(releaseWorkflow).toContain('source_sha')
+    expect(releaseWorkflow).toContain('--source-sha')
     expect(releaseWorkflow.toLowerCase()).not.toContain('playwright install')
     expect(await readFile(path.join(root, '.github/workflows/hmr-multi-platform.yml'), 'utf8')).toContain('pnpm test:e2e:daily:unit')
   })

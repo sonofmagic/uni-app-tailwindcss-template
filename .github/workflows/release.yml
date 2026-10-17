@@ -29,6 +29,10 @@ on:
         description: Version used for unpublished-version recovery
         required: false
         type: string
+      source_sha:
+        description: Source commit used to recover a prepared release
+        required: false
+        type: string
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -73,4 +77,10 @@ jobs:
           REPO_RELEASE_MODE: ${{ inputs.mode || 'auto' }}
           REPO_RELEASE_PACKAGE: ${{ inputs.package }}
           REPO_RELEASE_VERSION: ${{ inputs.version }}
-        run: pnpm exec repo release ci
+          REPO_RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          release_args=(release ci --mode "${REPO_RELEASE_MODE:-auto}")
+          if [[ -n "${REPO_RELEASE_PACKAGE:-}" ]]; then release_args+=(--package "$REPO_RELEASE_PACKAGE"); fi
+          if [[ -n "${REPO_RELEASE_VERSION:-}" ]]; then release_args+=(--version "$REPO_RELEASE_VERSION"); fi
+          if [[ -n "${REPO_RELEASE_SOURCE_SHA:-}" ]]; then release_args+=(--source-sha "$REPO_RELEASE_SOURCE_SHA"); fi
+          pnpm exec repo "${release_args[@]}"

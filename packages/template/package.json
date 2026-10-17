@@ -72,12 +72,13 @@
     "@vue/shared": "3.4.21",
     "@weapp-tailwindcss/merge": "^2.2.6",
     "pinia": "2.2.4",
-    "vue": "3.4.21",
+    "vue": "^3.4.21",
     "vue-i18n": "^9.14.5"
   },
   "devDependencies": {
     "@dcloudio/hbuilderx-cli": "^1.2.0",
-    "@dcloudio/types": "3.4.31",
+    "@dcloudio/types": "^3.4.31",
+    "@dcloudio/uni-automator": "3.0.0-5020620260917001",
     "@dcloudio/uni-cli-shared": "3.0.0-5020620260917001",
     "@dcloudio/uni-stacktracey": "3.0.0-5020620260917001",
     "@dcloudio/vite-plugin-uni": "3.0.0-5020620260917001",
@@ -86,19 +87,19 @@
     "@iconify-json/mdi": "^1.2.3",
     "@iconify-json/svg-spinners": "^1.2.4",
     "@iconify/tailwind4": "^1.2.3",
-    "@types/node": "^26.6.3",
-    "@vue/runtime-core": "3.4.21",
+    "@types/node": "^26.6.5",
+    "@vue/runtime-core": "^3.4.21",
     "autoprefixer": "^10.6.1",
-    "eslint": "^10.11.0",
-    "postcss": "^8.5.28",
+    "eslint": "^10.13.0",
+    "postcss": "^8.5.30",
     "rollup": "4.14.3",
-    "sass": "^1.105.1",
-    "stylelint": "^17.15.0",
+    "sass": "^1.105.2",
+    "stylelint": "^17.16.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "unplugin-auto-import": "^21.1.0",
     "vite": "5.2.8",
-    "weapp-ide-cli": "^6.1.9",
-    "weapp-tailwindcss": "^5.5.11"
+    "weapp-ide-cli": "^6.2.0",
+    "weapp-tailwindcss": "^5.6.3"
   }
 }

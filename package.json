@@ -1,7 +1,7 @@
 {
   "name": "uni-app-tailwindcss-template",
   "private": true,
-  "packageManager": "pnpm@12.8.1",
+  "packageManager": "pnpm@12.14.0",
   "author": "ice breaker <hi@sonofmagic.top>",
   "license": "MIT",
   "repository": {
@@ -62,13 +62,13 @@
     "repo:doctor": "repo doctor"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.1",
     "jsonc-parser": "^3.3.1",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.1",
     "pngjs": "^7.0.0",
-    "repoctl": "5.5.10",
+    "repoctl": "5.10.3",
     "semver": "^7.8.5",
-    "vitest": "5.0.3",
-    "wrangler": "^4.145.0"
+    "vitest": "5.0.5",
+    "wrangler": "^4.151.1"
   }
 }

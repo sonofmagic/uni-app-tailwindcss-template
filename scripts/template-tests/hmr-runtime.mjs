@@ -7,6 +7,7 @@ import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { pathToFileURL } from 'node:url'
 import { createFixtureController, getFixtureState } from './hmr-fixture.mjs'
 import { ExternalBlockError, runRuntimeLane, runtimeStatus, statusExitCode } from '../runtime-contract.mjs'
 import { connectWechatRuntime } from '../runtime-wechat.mjs'
@@ -27,6 +28,7 @@ const { chromium } = repoRequire('playwright')
 const { PNG } = repoRequire('pngjs')
 const args = parseArgs(process.argv.slice(2))
 const timeoutMs = Number(args.timeout ?? 240_000)
+const hmrRoundCount = parseRoundCount(args)
 const reportRoot = path.resolve(args['report-dir'] ?? '.hmr-artifacts')
 const bridgeFile = path.resolve('.hmr-artifacts/.file-event-bridge')
 const supportedPlatforms = ['h5', 'mp-weixin', 'app-android', 'app-ios']
@@ -41,6 +43,7 @@ let activeChildStopSignal = 'SIGTERM'
 let activeCompilerChild
 let activeAppProject
 let activeProgram
+let activeWechatApi
 let activeBrowser
 let activePage
 let selectedChrome
@@ -146,11 +149,20 @@ async function runPlatform(platform) {
     await activePage.goto(launch.url)
   }
   else {
-    activeProgram = await connectWechatRuntime(await import(templateRequire.resolve('weapp-ide-cli')), {
+    // weapp-ide-cli exposes an ESM-only export map, so createRequire.resolve()
+    // cannot resolve it even though the package is installed in the template.
+    const weappIdeCli = await import(pathToFileURL(
+      path.join(cwd, 'node_modules', 'weapp-ide-cli', 'dist', 'index.js'),
+    ).href)
+    activeWechatApi = weappIdeCli
+    activeProgram = await connectWechatRuntime(weappIdeCli, {
       projectPath: path.join(cwd, 'dist/dev/mp-weixin'), timeout: timeoutMs,
       cliPath: process.env.WECHAT_DEVTOOLS_CLI,
     })
-    await activeProgram.reLaunch('/pages/__daily_hmr__/index')
+    const currentWechatPage = await activeProgram.currentPage()
+    if (currentWechatPage?.path !== 'pages/__daily_hmr__/index') {
+      await activeProgram.reLaunch('/pages/__daily_hmr__/index')
+    }
     activeProgram.on('exception', error => runtimeErrors.push(String(error?.message ?? error)))
     activeProgram.on('console', (entry) => {
       if (entry?.type === 'error') {
@@ -163,15 +175,43 @@ async function runPlatform(platform) {
   await takeScreenshot(platform, path.join(reportDir, 'initial.png'))
 
   await sleep(1_500)
-  const changedAt = Date.now()
-  await fixture.apply('updated')
+  const roundSnapshots = []
+  const roundTimings = []
   let transformedSource
-  const hmrLog = await waitForHmrLog(logs, platform, changedAt)
-  if (platform === 'h5') {
-    transformedSource = await waitForTransformedFixture(launch.url, getFixtureState('updated').text)
+  for (let roundIndex = 0; roundIndex < hmrRoundCount; roundIndex += 1) {
+    // Alternate fixture states so every round changes both the source and the
+    // generated Tailwind output. The first round remains the historical
+    // initial -> updated assertion used by the default one-round command.
+    const stateName = roundIndex % 2 === 0 ? 'updated' : 'initial'
+    const sourceWriteAt = Date.now()
+    await fixture.apply(stateName)
+    const hmrEvent = await waitForHmrEvent(logs, platform, sourceWriteAt)
+    if (platform === 'h5' && roundIndex === 0) {
+      transformedSource = await waitForTransformedFixture(launch.url, getFixtureState(stateName).text)
+    }
+    const runtime = await waitForRuntimeState(activeProgram, platform, stateName)
+    const runtimeAppliedAt = Date.now()
+    const hmrEventAt = hmrEvent.time
+    roundTimings.push({
+      round: roundIndex + 1,
+      state: stateName,
+      sourceWriteAt,
+      hmrEventAt,
+      runtimeAppliedAt,
+      sourceToHmrMs: hmrEventAt - sourceWriteAt,
+      hmrToRuntimeMs: runtimeAppliedAt - hmrEventAt,
+      sourceToRuntimeMs: runtimeAppliedAt - sourceWriteAt,
+      hmrLog: hmrEvent.text.trim(),
+    })
+    roundSnapshots.push({ state: stateName, runtime, hmrLog: hmrEvent.text.trim() })
+    if (roundIndex === 0) {
+      await takeScreenshot(platform, path.join(reportDir, 'updated.png'))
+    }
   }
-  const updated = await waitForRuntimeState(activeProgram, platform, 'updated')
-  await takeScreenshot(platform, path.join(reportDir, 'updated.png'))
+  const firstRound = roundSnapshots[0]
+  const updated = firstRound.runtime
+  const hmrLog = firstRound.hmrLog
+  const timings = summarizeTimings(roundTimings)
 
   if (runtimeErrors.length > 0) {
     throw new Error(`Runtime errors: ${runtimeErrors.join(' | ')}`)
@@ -186,7 +226,15 @@ async function runPlatform(platform) {
   }
 
   await fs.writeFile(path.join(reportDir, 'dev.log'), logs.map(entry => entry.text).join(''), 'utf8')
-  const evidence = { initial, updated, hmrLog, pixels, runtimeErrors, transformedSource }
+  const evidence = {
+    initial,
+    updated,
+    hmrLog,
+    pixels,
+    runtimeErrors,
+    transformedSource,
+    timings: { rounds: roundTimings, summary: timings },
+  }
   await fs.writeFile(path.join(reportDir, 'evidence.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
   return evidence
 }
@@ -383,9 +431,14 @@ async function waitForRuntimeState(program, platform, stateName) {
         marker: last.marker === expected.text,
         backgroundColor: includesRgb(last.backgroundColor, expectedColor),
         baseLayout: last.size.width > 100 && Number.parseInt(last.fontWeight, 10) >= 600,
-        platformBorder: isPlatformBorder(last.borderColor, platform),
+        // WeChat DevTools' element.style() does not expose border and radius
+        // values for WXSS selectors in every runtime version. The generated
+        // WXSS evidence is the authoritative fallback for those properties.
+        platformBorder: isPlatformBorder(last.borderColor, platform)
+          || (platform === 'mp-weixin' && last.generatedStyles?.platformBorder),
         height: last.size.height > (stateName === 'initial' ? 40 : 55),
-        radius: matchesRadius(last.borderRadius, stateName),
+        radius: matchesRadius(last.borderRadius, stateName)
+          || (platform === 'mp-weixin' && last.generatedStyles?.radius),
         pseudo: platform === 'h5'
           ? last.pseudoContent.includes(expected.pseudo.replaceAll('_', ' ')) || last.pseudoMarker === expected.pseudo
           : Object.values(last.generatedStyles).every(Boolean),
@@ -406,6 +459,24 @@ async function readElementRuntimeState(program) {
   const element = await page.$('.hmr-runtime-probe')
   if (!element) {
     return { element: 'not found' }
+  }
+  if (typeof activeWechatApi?.readElementSnapshot === 'function') {
+    const snapshot = await activeWechatApi.readElementSnapshot(
+      element,
+      '.hmr-runtime-probe',
+      ['data-hmr-probe'],
+      ['background-color', 'border-color', 'border-radius', 'font-weight', 'height'],
+    )
+    return {
+      text: snapshot.text ?? '',
+      marker: snapshot.attributes?.['data-hmr-probe'],
+      backgroundColor: snapshot.styles?.['background-color'],
+      borderColor: snapshot.styles?.['border-color'],
+      borderRadius: snapshot.styles?.['border-radius'],
+      fontWeight: snapshot.styles?.['font-weight'],
+      height: snapshot.styles?.height,
+      size: snapshot.size ?? { width: 0, height: 0 },
+    }
   }
   return {
     text: await element.text(),
@@ -483,10 +554,11 @@ async function readGeneratedStyleEvidence(platform, stateName) {
     color: Boolean(color && css.includes(color)),
     pseudo: css.includes(expected.pseudo.toLowerCase()),
     radius: css.includes(radius),
+    platformBorder: css.includes('wx_cborder-blue-500'),
   }
 }
 
-async function waitForHmrLog(logs, platform, changedAt) {
+async function waitForHmrEvent(logs, platform, changedAt) {
   const matcher = platform === 'h5'
     ? /hmr update|page reload/i
     : /Incremental Compiling|开始差量编译|Build complete|compiled successfully/i
@@ -495,7 +567,12 @@ async function waitForHmrLog(logs, platform, changedAt) {
     matched = logs.find(entry => entry.time >= changedAt && matcher.test(entry.text))
     return Boolean(matched)
   }, timeoutMs, 300)
-  return matched.text.trim()
+  return matched
+}
+
+async function waitForHmrLog(logs, platform, changedAt) {
+  const event = await waitForHmrEvent(logs, platform, changedAt)
+  return event.text.trim()
 }
 
 async function waitForTransformedFixture(baseUrl, needle) {
@@ -667,7 +744,7 @@ async function cleanupPlatform() {
   }
   await attempt(() => fs.rm(bridgeFile, { force: true }))
   if (activeAppProject) await attempt(() => fs.rm(activeAppProject, { recursive: true, force: true }))
-  activeBrowser = activePage = activeProgram = undefined
+  activeBrowser = activePage = activeProgram = activeWechatApi = undefined
   activeLogs = activeReportDir = undefined
   selectedChrome = selectedHBuilderX = selectedDevice = undefined
   activeDeviceId = activeChild = activeCompilerChild = activeAppProject = undefined
@@ -720,8 +797,16 @@ async function writeSummary() {
   lines.push('')
   for (const result of results) {
     lines.push(`- ${result.platform}: ${result.status} (${result.durationMs} ms)${result.error ? ` - ${result.error}` : ''}`)
+    appendTimingSummary(lines, result.timings?.summary)
   }
   await fs.writeFile(path.join(reportRoot, 'summary.md'), `${lines.join('\n')}\n`, 'utf8')
+}
+
+function appendTimingSummary(lines, summary) {
+  if (!summary) return
+  for (const [metric, values] of Object.entries(summary)) {
+    lines.push(`  - ${metric}: p50=${values.p50} ms, p95=${values.p95} ms, mean=${values.mean} ms, min=${values.min} ms, max=${values.max} ms, stddev=${values.stddev} ms`)
+  }
 }
 
 async function compareScreenshots(beforePath, afterPath) {
@@ -993,6 +1078,51 @@ function parseArgs(rawArgs) {
     }
   }
   return parsed
+}
+
+function parseRoundCount(parsed) {
+  const raw = parsed.rounds ?? (parsed.benchmark ? 10 : 1)
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`--rounds must be a positive integer, received ${raw}`)
+  }
+  return value
+}
+
+function summarizeTimings(rounds) {
+  const metrics = ['sourceToHmrMs', 'hmrToRuntimeMs', 'sourceToRuntimeMs']
+  return Object.fromEntries(metrics.map(metric => [metric, summarizeValues(rounds.map(round => round[metric]))]))
+}
+
+function summarizeValues(values) {
+  const sorted = values.filter(value => Number.isFinite(value)).sort((left, right) => left - right)
+  if (sorted.length === 0) {
+    return { count: 0, p50: null, p95: null, mean: null, min: null, max: null, stddev: null }
+  }
+  const mean = sorted.reduce((sum, value) => sum + value, 0) / sorted.length
+  const variance = sorted.reduce((sum, value) => sum + (value - mean) ** 2, 0) / sorted.length
+  return {
+    count: sorted.length,
+    p50: roundMs(percentile(sorted, 0.5)),
+    p95: roundMs(percentile(sorted, 0.95)),
+    mean: roundMs(mean),
+    min: roundMs(sorted[0]),
+    max: roundMs(sorted.at(-1)),
+    stddev: roundMs(Math.sqrt(variance)),
+  }
+}
+
+function percentile(sorted, fraction) {
+  if (sorted.length === 1) return sorted[0]
+  const position = (sorted.length - 1) * fraction
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  if (lower === upper) return sorted[lower]
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
+}
+
+function roundMs(value) {
+  return Number(value.toFixed(2))
 }
 
 function packageVersion(name, resolver = templateRequire) {

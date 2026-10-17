@@ -2,7 +2,7 @@
   "name": "uni-app-tailwindcss-template-default",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@12.8.1",
+  "packageManager": "pnpm@12.14.0",
   "imports": {
     "#tailwind.css": "./src/tailwind.css"
   },

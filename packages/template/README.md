@@ -15,7 +15,7 @@
 - `Vue 3`
 - `Tailwind CSS v4`
 - `weapp-tailwindcss`
-- `pnpm 12.8.1`
+- `pnpm 12.14.0`
 
 > 当前主分支是 `tailwindcss@4` 版本；如果需要 `tailwindcss@3` 版本，请切换到 `tailwindcss@3` 分支。
 
@@ -33,7 +33,7 @@
 ## 使用前提
 
 - Node.js `^22.18.0 || >=24.11.0`
-- `pnpm 12.8.1`
+- `pnpm 12.14.0`
 - 微信开发者工具，用于微信小程序
 - HBuilderX `5.0+`，用于 Android 和 iOS App 调试
 - Android SDK、模拟器或已开启调试的 Android 设备

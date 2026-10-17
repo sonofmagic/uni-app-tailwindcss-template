@@ -208,14 +208,29 @@ async function getLatestMtimeMs(dir) {
   const stack = [dir]
   while (stack.length > 0) {
     const current = stack.pop()
-    const entries = await fs.readdir(current, { withFileTypes: true })
+    let entries
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true })
+    }
+    catch (error) {
+      if (error.code === 'ENOENT') continue
+      throw error
+    }
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name)
       if (entry.isDirectory()) {
         stack.push(fullPath)
       }
       else {
-        latest = Math.max(latest, (await fs.stat(fullPath)).mtimeMs)
+        try {
+          latest = Math.max(latest, (await fs.stat(fullPath)).mtimeMs)
+        }
+        catch (error) {
+          // uni-app may atomically replace an artifact while it is compiling.
+          // A file disappearing between readdir and stat is expected; the next
+          // polling pass will observe the replacement.
+          if (error.code !== 'ENOENT') throw error
+        }
       }
     }
   }

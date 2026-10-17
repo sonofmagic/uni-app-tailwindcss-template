@@ -10,7 +10,7 @@ const lockPath = path.join(packageRoot, '.build-lock')
 await acquireLock(lockPath)
 
 try {
-  await run('pnpm', ['exec', 'tsup', 'src/cli.ts', '--format', 'esm', '--out-dir', 'dist', '--clean'])
+  await run('pnpm', ['exec', 'tsdown', 'src/cli.ts', '--config', 'tsdown.config.mjs', '--format', 'esm', '--out-dir', 'dist', '--clean'])
   await run(process.execPath, ['scripts/build-templates.mjs'])
 }
 finally {

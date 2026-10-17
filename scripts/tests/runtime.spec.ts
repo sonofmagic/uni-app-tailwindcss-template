@@ -213,7 +213,10 @@ describe('GitHub verification', () => {
   })
   it('keeps release history and runtime unit tests in CI', async () => {
     const root = fileURLToPath(new URL('../../', import.meta.url))
-    expect(await readFile(path.join(root, '.github/workflows/release.yml'), 'utf8')).toContain('fetch-depth: 0')
+    const releaseWorkflow = await readFile(path.join(root, '.github/workflows/release.yml'), 'utf8')
+    expect(releaseWorkflow).toContain('fetch-depth: 0')
+    expect(releaseWorkflow).toContain('timeout-minutes: 15')
+    expect(releaseWorkflow.toLowerCase()).not.toContain('playwright install')
     expect(await readFile(path.join(root, '.github/workflows/hmr-multi-platform.yml'), 'utf8')).toContain('pnpm test:e2e:daily:unit')
   })
 })

@@ -71,6 +71,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Playwright browsers
+        env:
+          REPO_RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          current_playwright=$(node -p "require('./package.json').devDependencies.playwright.replace(/^[^0-9]*/, '')")
+          timeout 8m pnpm exec playwright install chromium
+          if [[ -n "${REPO_RELEASE_SOURCE_SHA:-}" ]]; then
+            source_playwright=$(git show "$REPO_RELEASE_SOURCE_SHA:package.json" | node -e "const fs=require('node:fs'); const pkg=JSON.parse(fs.readFileSync(0, 'utf8')); process.stdout.write((pkg.devDependencies.playwright || '').replace(/^[^0-9]*/, ''))")
+            if [[ -n "$source_playwright" && "$source_playwright" != "$current_playwright" ]]; then
+              timeout 8m pnpm dlx "playwright@$source_playwright" install chromium
+            fi
+          fi
+
       - name: Run repo release CI
         env:
           GITHUB_TOKEN: ${{ github.token }}

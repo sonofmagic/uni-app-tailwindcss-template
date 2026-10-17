@@ -13,3 +13,7 @@ onlyBuiltDependencies:
   - '@weapp-tailwindcss/merge'
 
 minimumReleaseAge: 0
+
+overrides:
+  '@intlify/core-base': 9.14.5
+  '@intlify/message-resolver': 9.1.11

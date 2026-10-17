@@ -18,6 +18,8 @@ minimumReleaseAge: 0
 overrides:
   '@icebreakers/monorepo@5.5.10>@pnpm/logger': 1001.0.1
   '@icebreakers/monorepo@5.5.10>@pnpm/worker': 1000.6.7
+  '@intlify/core-base': 9.14.5
+  '@intlify/message-resolver': 9.1.11
 versioning:
   fixed:
     - - create-uni-app-tailwindcss

@@ -21,3 +21,7 @@ create-uni-app-tailwindcss@0.1.4:
     - good-cherries-smile
     - orange-bats-worry
     - soft-goats-invent
+create-uni-app-tailwindcss@0.1.5:
+  dir: packages/create-uni-app-tailwindcss
+  intents:
+    - bright-tools-build

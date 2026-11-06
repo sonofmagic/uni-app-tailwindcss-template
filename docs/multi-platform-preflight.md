@@ -80,7 +80,7 @@ pnpm --dir packages/template exec weapp islogin
 
 ### App Android
 
-安装 HBuilderX，并确保其版本与生成项目中的 `@dcloudio/vite-plugin-uni` `compilerVersion` 和正式/Alpha 通道均匹配。当前正式编译器匹配 HBuilderX 5.26，默认优先选择 `/Applications/HBuilderX.app`；可用 `HBUILDERX_CLI_PATH` 显式指定。预检和执行使用同一选择结果，并核对 CLI 实际连接的版本。若已有 Alpha 会话导致正式 CLI 重定向，报告 `BLOCKED`，由用户处理已有 IDE 会话后重试，不自动关闭它。安装 Android platform-tools，连接一个已授权设备或启动一个模拟器：
+安装 HBuilderX，并确保其版本与生成项目中的 `@dcloudio/vite-plugin-uni` `compilerVersion` 和正式/Alpha 通道均匹配。当前正式编译器匹配 HBuilderX 5.34，默认优先选择 `/Applications/HBuilderX.app`；可用 `HBUILDERX_CLI_PATH` 显式指定。预检和执行使用同一选择结果，并核对 CLI 实际连接的版本。若已有 Alpha 会话导致正式 CLI 重定向，报告 `BLOCKED`，由用户处理已有 IDE 会话后重试，不自动关闭它。安装 Android platform-tools，连接一个已授权设备或启动一个模拟器：
 
 ```bash
 adb devices

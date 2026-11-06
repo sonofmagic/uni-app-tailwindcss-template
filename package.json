@@ -30,6 +30,7 @@
     "lint": "node scripts/run-template.mjs @default lint",
     "lint:fix": "node scripts/run-template.mjs @default lint:fix",
     "up:deps": "pnpm -r --include-workspace-root up --latest --interactive \"!@dcloudio/*\" \"!@vue/runtime-core\" \"!@vue/shared\" \"!pinia\" \"!rollup\" \"!vite\" \"!vue\" \"!vue-i18n\"",
+    "update:deps": "pnpm run up:deps",
     "up:uni-app": "node scripts/run-template.mjs @default update:uni-app",
     "template": "node scripts/run-template.mjs",
     "templates:matrix": "node scripts/ci-matrix.mjs",
@@ -62,13 +63,13 @@
     "repo:doctor": "repo doctor"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "jsonc-parser": "^3.3.1",
-    "playwright": "^1.64.1",
+    "playwright": "^1.65.0",
     "pngjs": "^7.0.0",
     "repoctl": "5.10.3",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "vitest": "5.0.5",
-    "wrangler": "^4.151.1"
+    "wrangler": "^4.158.0"
   }
 }

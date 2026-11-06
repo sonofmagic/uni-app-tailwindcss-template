@@ -90,12 +90,12 @@ describe('runtime lanes and cleanup', () => {
 
 describe('HBuilderX identity', () => {
   it.each([
-    ['5.26.2026091802', '3.0.0-5020620260917001', true],
-    ['5.26.2026091402-alpha', '3.0.0-5020620260917001', false],
-    ['5.26.2026091402-alpha', '3.0.0-alpha-5020620260917001', true],
-    ['5.27.2026100101', '3.0.0-5020620260917001', false],
+    ['5.34.2026102902', '3.0.0-5030420261029002', true],
+    ['5.34.2026102801-alpha', '3.0.0-5030420261029002', false],
+    ['5.34.2026102801-alpha', '3.0.0-alpha-5030420261029002', true],
+    ['5.35.2026110101', '3.0.0-5030420261029002', false],
   ])('matches version and channel: %s', (version, compiler, expected) => {
-    expect(matchesHBuilderX(version, '5.26', compiler)).toBe(expected)
+    expect(matchesHBuilderX(version, '5.34', compiler)).toBe(expected)
   })
 
   it.each([true, false])('preserves existing IDE sessions and tracks only owned starts: conflict=%s', async (conflict) => {
@@ -105,11 +105,11 @@ describe('HBuilderX identity', () => {
       source: '/template', onStarted: selected => owned.push(selected.appPath),
       executor: {
         async exists() { return true },
-        async readFile() { return JSON.stringify({ version: '3.0.0-5020620260917001', 'uni-app': { compilerVersion: '5.26' } }) },
+        async readFile() { return JSON.stringify({ version: '3.0.0-5030420261029002', 'uni-app': { compilerVersion: '5.34' } }) },
         async run(command: string, args: string[]) {
           if (command === 'pgrep') return { code: args[1].includes('[^/]') && conflict ? 0 : 1, output: '' }
           if (command === 'open') opened.push(args[1])
-          return { code: 0, output: args.join(' ').includes('Alpha') ? '5.26.2026091402-alpha' : '5.26.2026091802' }
+          return { code: 0, output: args.join(' ').includes('Alpha') ? '5.34.2026102801-alpha' : '5.34.2026102902' }
         },
       },
     })
@@ -122,15 +122,15 @@ describe('HBuilderX identity', () => {
     const result = await checkHBuilderX({
       source: '/template', cliPath: '/Applications/HBuilderX.app/Contents/MacOS/cli',
       executor: {
-        async readFile() { return JSON.stringify({ version: '3.0.0-5020620260917001', 'uni-app': { compilerVersion: '5.26' } }) },
+        async readFile() { return JSON.stringify({ version: '3.0.0-5030420261029002', 'uni-app': { compilerVersion: '5.34' } }) },
         async exists() { return true },
         async run(command: string) {
-          return { code: 0, output: command === 'defaults' ? '5.26.2026091802' : '当前运行的cli与正在运行的HBuilderX不匹配，请尝试/Applications/HBuilderX-Alpha.app/Contents/MacOS下的cli' }
+          return { code: 0, output: command === 'defaults' ? '5.34.2026102902' : '当前运行的cli与正在运行的HBuilderX不匹配，请尝试/Applications/HBuilderX-Alpha.app/Contents/MacOS下的cli' }
         },
       },
     })
     expect(result.status).toBe('BLOCKED')
-    expect(result.evidence.selected.version).toBe('5.26.2026091802')
+    expect(result.evidence.selected.version).toBe('5.34.2026102902')
   })
 })
 
@@ -171,10 +171,10 @@ describe('preflight device selection', () => {
       selection: 'app-ios', runBuild: false, environment: { DAILY_IOS_DEVICE_ID: 'chosen' },
       executor: {
         async exists(file: string) { return !file.endsWith('.file-event-bridge') },
-        async readFile(file: string) { return file.endsWith('package.json') ? JSON.stringify({ version: '3.0.0-5020620260917001', 'uni-app': { compilerVersion: '5.26' }, packageManager: 'pnpm@12.8.1' }) : '{}' },
+        async readFile(file: string) { return file.endsWith('package.json') ? JSON.stringify({ version: '3.0.0-5030420261029002', 'uni-app': { compilerVersion: '5.34' }, packageManager: 'pnpm@12.8.1' }) : '{}' },
         async run(command: string, args: string[]) {
           if (command === 'xcrun') return { code: 0, output: JSON.stringify({ devices: { 'SimRuntime.iOS-26': ['chosen', 'other'].map(udid => ({ udid, name: udid, state: 'Booted', isAvailable: true })) } }) }
-          return { code: 0, output: command === 'pnpm' && args[0] === '--version' ? '12.8.1' : '5.26.2026091802' }
+          return { code: 0, output: command === 'pnpm' && args[0] === '--version' ? '12.8.1' : '5.34.2026102902' }
         },
       },
     })

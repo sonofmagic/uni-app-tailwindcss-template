@@ -1,5 +1,13 @@
 # create-uni-app-tailwindcss
 
+## 0.1.7
+
+### Patch Changes
+
+- 升级模板与脚手架的兼容范围内依赖，保持 uni-app、Vue、Vite 和跨端编译工具链版本一致。
+
+- 将默认模板的 weapp-tailwindcss 升级至 5.7.2，并验证多平台构建与样式热更新。
+
 ## 0.1.6
 
 ### Patch Changes

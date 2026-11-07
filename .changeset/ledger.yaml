@@ -29,3 +29,8 @@ create-uni-app-tailwindcss@0.1.6:
   dir: packages/create-uni-app-tailwindcss
   intents:
     - fresh-intlify-fix
+create-uni-app-tailwindcss@0.1.7:
+  dir: packages/create-uni-app-tailwindcss
+  intents:
+    - fresh-deps-roll-forward
+    - wet-rings-help

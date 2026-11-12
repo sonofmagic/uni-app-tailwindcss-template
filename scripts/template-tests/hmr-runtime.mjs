@@ -8,9 +8,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
-import { createFixtureController, getFixtureState } from './hmr-fixture.mjs'
+import { createFixtureController, getFixtureState, targetVueFile } from './hmr-fixture.mjs'
 import { ExternalBlockError, runRuntimeLane, runtimeStatus, statusExitCode } from '../runtime-contract.mjs'
-import { connectWechatRuntime } from '../runtime-wechat.mjs'
+import { closeWechatRuntime, connectWechatRuntime } from '../runtime-wechat.mjs'
 import { runCommand, signalCommand } from '../runtime-process.mjs'
 import {
   checkAndroidDevice,
@@ -40,10 +40,11 @@ let fatalError
 let environment = collectBaseEnvironment()
 let activeChild
 let activeChildStopSignal = 'SIGTERM'
-let activeCompilerChild
 let activeAppProject
+let activeAppProjectOpened = false
 let activeProgram
 let activeWechatApi
+let activeWechatJournal
 let activeBrowser
 let activePage
 let selectedChrome
@@ -155,10 +156,22 @@ async function runPlatform(platform) {
       path.join(cwd, 'node_modules', 'weapp-ide-cli', 'dist', 'index.js'),
     ).href)
     activeWechatApi = weappIdeCli
-    activeProgram = await connectWechatRuntime(weappIdeCli, {
-      projectPath: path.join(cwd, 'dist/dev/mp-weixin'), timeout: timeoutMs,
-      cliPath: process.env.WECHAT_DEVTOOLS_CLI,
-    })
+    activeWechatJournal = path.join(reportDir, 'wechat-projects')
+    await fs.mkdir(activeWechatJournal, { recursive: true })
+    const journalEnv = weappIdeCli.MANAGED_PROJECT_JOURNAL_ENV
+    const previousJournal = process.env[journalEnv]
+    process.env[journalEnv] = activeWechatJournal
+    try {
+      activeProgram = await connectWechatRuntime(weappIdeCli, {
+        projectPath: path.join(cwd, 'dist/dev/mp-weixin'), timeout: timeoutMs,
+        cliPath: process.env.WECHAT_DEVTOOLS_CLI,
+        preserveProjectRoot: true,
+      })
+    }
+    finally {
+      if (previousJournal === undefined) delete process.env[journalEnv]
+      else process.env[journalEnv] = previousJournal
+    }
     const currentWechatPage = await activeProgram.currentPage()
     if (currentWechatPage?.path !== 'pages/__daily_hmr__/index') {
       await activeProgram.reLaunch('/pages/__daily_hmr__/index')
@@ -246,24 +259,29 @@ async function runAppPlatform(platform, reportDir) {
   activeDeviceId = deviceId
   const cli = hbuilderxPaths().cli
   const logs = activeLogs = []
-  activeAppProject = await fs.mkdtemp(path.join(tmpdir(), 'uni-app-hmr-app-'))
+  // Launch an isolated source project through the same uni-app lifecycle used
+  // by uni-launch. Importing compiled output makes HBuilderX treat it as a 5+
+  // app, whose WebView refresh does not reload the uni-app service on Android.
+  // Canonical paths also keep macOS watcher events aligned with the IDE root.
+  activeAppProject = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), 'uni-app-hmr-app-')))
+  const excluded = new Set(['node_modules', 'dist', '.git', '.hmr-artifacts'])
+  await fs.cp(cwd, activeAppProject, {
+    recursive: true,
+    filter: source => !path.relative(cwd, source).split(path.sep).some(part => excluded.has(part)),
+  })
+  await fs.symlink(await fs.realpath(path.join(cwd, 'node_modules')), path.join(activeAppProject, 'node_modules'), 'dir')
   const env = {
     ...process.env,
     CHOKIDAR_INTERVAL: '200',
     CHOKIDAR_USEPOLLING: 'true',
     HMR_SMOKE_USE_POLLING: 'true',
-    UNI_OUTPUT_DIR: activeAppProject,
   }
-  activeCompilerChild = spawnUni(['-p', 'app'], env)
-  collectLogs(activeCompilerChild, logs, `${platform}:compiler`)
-  await waitForOutput(activeCompilerChild, /Build complete\. Watching for changes|ready in/i, timeoutMs)
-
   const appProject = activeAppProject
-  await waitForFile(path.join(appProject, 'manifest.json'), content => content.length > 0, timeoutMs)
   const opened = await runCommand(cli, ['project', 'open', '--path', appProject], { cwd })
   if (opened.code !== 0) {
-    throw new Error(`HBuilderX could not open the compiled App project: ${(opened.stderr || opened.stdout).trim()}`)
+    throw new Error(`HBuilderX could not open the temporary App source project: ${(opened.stderr || opened.stdout).trim()}`)
   }
+  activeAppProjectOpened = true
   const launchArgs = [
     'launch',
     platform,
@@ -301,6 +319,10 @@ async function runAppPlatform(platform, reportDir) {
 
   const changedAt = Date.now()
   await fixture.apply('updated')
+  const appProbe = path.join(appProject, path.relative(cwd, targetVueFile))
+  await fs.copyFile(targetVueFile, `${appProbe}.tmp`)
+  await fs.utimes(path.join(appProject, 'src/tailwind.css'), new Date(), new Date())
+  await fs.rename(`${appProbe}.tmp`, appProbe)
   const hmrLog = await waitForHmrLog(logs, platform, changedAt)
   let updated
   let updateError
@@ -736,18 +758,25 @@ async function cleanupPlatform() {
     catch (error) { errors.push(error) }
   }
   if (activeBrowser) await attempt(() => activeBrowser.close())
-  if (activeProgram) await attempt(() => activeProgram.disconnect())
+  if (activeWechatApi) await attempt(() => closeWechatRuntime(activeWechatApi, activeProgram, activeWechatJournal))
   if (activeChild) await attempt(() => stopChild(activeChild, activeChildStopSignal))
-  if (activeCompilerChild) await attempt(() => stopChild(activeCompilerChild, 'SIGTERM'))
+  if (activeAppProjectOpened) {
+    await attempt(async () => {
+      const closed = await runCommand(hbuilderxPaths().cli, ['project', 'close', '--path', activeAppProject], { cwd })
+      const output = `${closed.stdout}\n${closed.stderr}`.trim()
+      if (closed.code !== 0 || /^-\d+:/m.test(output)) throw new Error(`HBuilderX could not close the temporary App project: ${output}`)
+    })
+  }
   if (activeReportDir && activeLogs) {
     await attempt(() => fs.writeFile(path.join(activeReportDir, 'dev.log'), activeLogs.map(entry => entry.text).join(''), 'utf8'))
   }
   await attempt(() => fs.rm(bridgeFile, { force: true }))
   if (activeAppProject) await attempt(() => fs.rm(activeAppProject, { recursive: true, force: true }))
-  activeBrowser = activePage = activeProgram = activeWechatApi = undefined
+  activeBrowser = activePage = activeProgram = activeWechatApi = activeWechatJournal = undefined
   activeLogs = activeReportDir = undefined
   selectedChrome = selectedHBuilderX = selectedDevice = undefined
-  activeDeviceId = activeChild = activeCompilerChild = activeAppProject = undefined
+  activeDeviceId = activeChild = activeAppProject = undefined
+  activeAppProjectOpened = false
   activeChildStopSignal = 'SIGTERM'
   if (errors.length) throw new AggregateError(errors, errors.map(error => error.message).join('; '))
 }
@@ -971,17 +1000,6 @@ function appProcessId(platform) {
   }
   const output = spawnSync('xcrun', ['simctl', 'spawn', activeDeviceId, 'launchctl', 'list'], { encoding: 'utf8', timeout: 30_000 }).stdout
   return output.split('\n').find(line => line.includes('io.dcloud.HBuilder'))?.trim().split(/\s+/)[0] ?? ''
-}
-
-async function waitForFile(file, predicate, timeout) {
-  await waitUntil(async () => {
-    try {
-      return predicate(await fs.readFile(file, 'utf8'))
-    }
-    catch {
-      return false
-    }
-  }, timeout, 500)
 }
 
 async function waitForOutput(child, matcher, timeout) {

@@ -1,7 +1,7 @@
 {
   "name": "uni-app-tailwindcss-template",
   "private": true,
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.18.0",
   "author": "ice breaker <hi@sonofmagic.top>",
   "license": "MIT",
   "repository": {
@@ -13,7 +13,7 @@
     "url": "https://github.com/sonofmagic/uni-app-tailwindcss-template/issues"
   },
   "engines": {
-    "node": "^22.18.0 || >=24.11.0"
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
   "scripts": {
     "dev": "node scripts/run-template.mjs @default dev",
@@ -67,9 +67,9 @@
     "jsonc-parser": "^3.3.1",
     "playwright": "^1.65.0",
     "pngjs": "^7.0.0",
-    "repoctl": "5.10.3",
+    "repoctl": "6.5.4",
     "semver": "^7.8.6",
-    "vitest": "5.0.5",
-    "wrangler": "^4.158.0"
+    "vitest": "5.1.0",
+    "wrangler": "^4.160.1"
   }
 }

@@ -4,22 +4,19 @@ packages:
 allowBuilds:
   '@dcloudio/hbuilderx-cli': false
   '@parcel/watcher': true
+  '@weapp-tailwindcss/merge': true
   core-js: true
   core-js-pure: true
   esbuild: true
   msgpackr-extract: false
   vue-demi: true
   workerd: true
-onlyBuiltDependencies:
-  - '@weapp-tailwindcss/merge'
 minimumReleaseAge: 0
-# repoctl 5.5.10 uses the pnpm 10 workspace parser. Its logger and worker
-# must satisfy that parser's actual peer ranges, rather than the pnpm 11 APIs.
 overrides:
-  '@icebreakers/monorepo@5.5.10>@pnpm/logger': 1001.0.1
-  '@icebreakers/monorepo@5.5.10>@pnpm/worker': 1000.6.7
   '@intlify/core-base': 9.14.5
   '@intlify/message-resolver': 9.1.11
+  # oxfmt pins an affected tinypool patch; keep its worker API on the same minor.
+  oxfmt>tinypool: 2.1.2
 versioning:
   fixed:
     - - create-uni-app-tailwindcss

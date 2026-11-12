@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { runCommand } from '../runtime-process.mjs'
 import { ExternalBlockError, checkGitHubRun, runRuntimeLane, runtimeStatus, statusExitCode } from '../runtime-contract.mjs'
 import { checkHBuilderX, matchesHBuilderX, prepareHBuilderX, runPreflight, checkNodeAndPnpm } from '../preflight-core.mjs'
-import { connectWechatRuntime } from '../runtime-wechat.mjs'
+import { closeWechatRuntime, connectWechatRuntime } from '../runtime-wechat.mjs'
 
 describe('external commands', () => {
   it('captures output, exit status and spawn failures', async () => {
@@ -196,6 +196,32 @@ describe('WeChat sessions', () => {
     const launchAutomator = async () => { throw new Error('port unavailable') }
     await expect(connectWechatRuntime({ launchAutomator, isDevtoolsHttpPortError: () => true }, {})).rejects.toBeInstanceOf(ExternalBlockError)
     await expect(connectWechatRuntime({ launchAutomator }, {})).rejects.not.toBeInstanceOf(ExternalBlockError)
+  })
+
+  it('closes owned project windows and verifies the task journal even after a launch failure', async () => {
+    const actions: string[] = []
+    const api = {
+      async cleanupManagedWechatProjects(options: unknown) { actions.push(`cleanup:${JSON.stringify(options)}`) },
+      async readManagedWechatProjectRecords() { return [{ state: 'released' }] },
+      isManagedWechatProjectFullyReleased(record: { state: string }) { return record.state === 'released' },
+    }
+    await closeWechatRuntime(api, { async close() { actions.push('close') } }, '/task/journal')
+    await closeWechatRuntime(api, undefined, '/task/failed-launch')
+    expect(actions).toEqual([
+      'close', 'cleanup:{"journalPath":"/task/journal","scope":"process"}',
+      'cleanup:{"journalPath":"/task/failed-launch","scope":"process"}',
+    ])
+    await expect(closeWechatRuntime({ ...api, isManagedWechatProjectFullyReleased: () => false }, undefined, '/task/journal')).rejects.toThrow('cleanup is incomplete')
+  })
+
+  it('retains a close failure while still attempting journal cleanup', async () => {
+    let cleaned = false
+    const api = {
+      async cleanupManagedWechatProjects() { cleaned = true },
+      async readManagedWechatProjectRecords() { return [] },
+    }
+    await expect(closeWechatRuntime(api, { async close() { throw new Error('window close failed') } }, '/task/journal')).rejects.toThrow('window close failed')
+    expect(cleaned).toBe(true)
   })
 })
 

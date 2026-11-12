@@ -337,6 +337,9 @@ export async function checkWechat({ executor = createDefaultExecutor(), source, 
   if (cli.status !== 'PASS') return [cli]
   const login = await executor.run('pnpm', ['exec', 'weapp', 'islogin'], { cwd: source })
   const output = commandOutput(login)
+  if (/Runtime busy:/i.test(output)) {
+    return [cli, makeCheck({ id: 'wechat.runtime.lock', target, phase: 'runtime', status: 'BLOCKED', message: 'Another E2E operation owns the machine runtime lock; WeChat login was not checked', repairCommand: 'Wait for the owning E2E operation to finish, then retry; do not remove its lock', evidence: { output, code: login.code } })]
+  }
   const loggedIn = login.code === 0 && /"login"\s*:\s*true/i.test(output)
   return [cli, makeCheck({ id: 'wechat.login', target, phase: 'runtime', status: loggedIn ? 'PASS' : 'BLOCKED', message: loggedIn ? 'WeChat DevTools is logged in' : 'WeChat DevTools login is expired or its service port is unavailable', repairCommand: loggedIn ? undefined : `pnpm --dir ${source} exec weapp login`, evidence: { output, code: login.code } })]
 }

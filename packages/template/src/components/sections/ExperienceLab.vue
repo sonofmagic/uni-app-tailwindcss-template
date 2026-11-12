@@ -306,16 +306,16 @@ function copy(data: string) {
 
 <style scoped>
 .test {
+  box-sizing: border-box;
   display: flex !important;
   align-items: center;
   justify-content: center;
   width: 222.222px;
   max-width: 100%;
   height: 100px;
-  box-sizing: border-box;
-  border-radius: 40px;
-  background-color: rgb(18 52 86 / 0.54);
-  color: #ffffff;
+  color: #fff;
   text-align: center;
+  background-color: rgb(18 52 86 / 54%);
+  border-radius: 40px;
 }
 </style>

@@ -96,9 +96,10 @@ describe('preflight status and version helpers', () => {
   })
 
   it.each([
-    ['22.17.0', 'FAIL'], ['22.18.0', 'PASS'], ['22.19.0', 'PASS'],
-    ['23.11.0', 'FAIL'], ['24.10.0', 'FAIL'], ['24.11.0', 'PASS'],
-    ['26.0.0', 'PASS'], ['24.11.0-rc.1', 'FAIL'],
+    ['22.23.3', 'FAIL'], ['22.23.4', 'PASS'], ['22.24.0', 'PASS'],
+    ['23.11.0', 'FAIL'], ['24.22.0', 'FAIL'], ['24.22.1', 'PASS'],
+    ['25.0.0', 'FAIL'], ['26.12.0', 'FAIL'], ['26.12.1', 'PASS'],
+    ['27.0.0', 'PASS'], ['24.22.1-rc.1', 'FAIL'],
   ])('checks the declared Node engine range for %s', async (nodeVersion, status) => {
     const pkg = JSON.parse(await readFile(new URL('../../packages/template/package.json', import.meta.url), 'utf8'))
     const checks = await checkNodeAndPnpm({
@@ -203,6 +204,22 @@ describe('preflight runtime checks', () => {
     })
     expect(checks.map(check => check.status)).toEqual(['PASS', 'PASS'])
     expect(checks.map(check => check.id)).toEqual(['wechat.devtools.cli', 'wechat.login'])
+  })
+
+  it('reports an occupied runtime lock without asking the user to log in again', async () => {
+    const checks = await checkWechat({
+      source: '/tmp/uni-template',
+      executor: {
+        async run(_command: string, args: string[]) {
+          return args.includes('islogin')
+            ? { code: 1, output: '[error] Runtime busy: another E2E operation owns this machine.' }
+            : { code: 0, output: 'WeChat DevTools 1.0.0' }
+        },
+      },
+    })
+    expect(checks[1]).toMatchObject({ id: 'wechat.runtime.lock', status: 'BLOCKED' })
+    expect(checks[1].message).toContain('login was not checked')
+    expect(checks[1].repairCommand).toContain('do not remove its lock')
   })
 })
 

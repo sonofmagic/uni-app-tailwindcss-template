@@ -14,7 +14,7 @@ This guide is for contributors maintaining the template, CLI, and repository aut
 
 ## Environment and Local Development
 
-Use Node.js `^22.18.0 || >=24.11.0` and `pnpm 12.14.0`. Install dependencies with:
+Use Node.js `^22.23.4 || ^24.22.1 || >=26.12.1` and `pnpm 12.18.0`. Install dependencies with:
 
 ```bash
 pnpm install
